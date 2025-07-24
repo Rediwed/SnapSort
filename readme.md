@@ -108,16 +108,17 @@ You can run multiple instances of SnapSort simultaneously to process different f
 
 SnapSort continues to evolve with several enhancements considered:
 
-- **Multi-threaded processing:** Add support for multi-threaded or multi-process file handling to increase speed, especially on fast SSDs
+
 - **Improved deduplication:** More advanced solution to handle exact and near duplicates, with configurable speed vs. accuracy trade-offs
-- **Faster hash comparison:** Limit SHA256 calculation to first 1KB of files for faster processing of large RAW images
+- **Faster hash comparison:** Limit SHA256 calculation to first 1KB of files for faster processing of large (RAW) images
+- **Analyze-only mode:** Build CSV without copying files for manual review and editing
 - **Command-line arguments:** Allow configuration via command-line for easier automation
 - **Automatic drive handling:** Notifications when drives finish, safe ejection, and auto-start when new drives connect
 - **In-memory destination tree:** Faster duplicate detection through memory-cached folder structure
-- **Project-level reporting:** Summary statistics across multiple drives or sessions
-- **Analyze-only mode:** Build CSV without copying files for manual review and editing
-- **Improved architecture:** Better Python structure with classes and modules for integration into other projects
-- **Improved consideration of folder-names:** Multiple photos are often grouped based on event, happening, moment or memory. Because SnapSort utilizes a date-based folder structure, this grouping can get lost. SnapSort already aims to retain the naming structure by including the name of the parent folder into the destination file-name, however this doesn't consider cases where folders are nested multiple times.
+- **Project management:** Your forgotten photo's and memories are rarely on a single hard drive. SnapSort could benefit from more extensive project management, where it supports analysis and processing of files originating from multiple sources. SnapSort should be able to: create projects, analyse hard drives ahead of time, allow for manual evaluation across the project's drives, automatic drive handling and report a summary of the full project results
+-  **Improved architecture:** Better Python structure with classes and modules for integration into other projects
+- **Improved consideration of folder-names:** Multiple photos are often grouped based on event, happening, moment or memory. Because SnapSort utilizes a date-based folder structure, this grouping can get lost. SnapSort already aims to retain the naming structure by including the name of the parent folder into the destination file-name, however this doesn't consider cases where folders are nested multiple times
+- **Multi-threaded processing:** Add support for multi-threaded or multi-process file handling to increase speed, especially on fast SSDs
 
 ---
 
