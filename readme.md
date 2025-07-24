@@ -117,6 +117,7 @@ SnapSort continues to evolve with several enhancements considered:
 - **Project-level reporting:** Summary statistics across multiple drives or sessions
 - **Analyze-only mode:** Build CSV without copying files for manual review and editing
 - **Improved architecture:** Better Python structure with classes and modules for integration into other projects
+- **Improved consideration of folder-names:** Multiple photos are often grouped based on event, happening, moment or memory. Because SnapSort utilizes a date-based folder structure, this grouping can get lost. SnapSort already aims to retain the naming structure by including the name of the parent folder into the destination file-name, however this doesn't consider cases where folders are nested multiple times.
 
 ---
 
