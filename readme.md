@@ -105,7 +105,7 @@ You can run multiple instances of SnapSort simultaneously to process different f
 
 ## 🔮 Future Development
 
-SnapSort continues to evolve with several enhancements planned:
+SnapSort continues to evolve with several enhancements considered:
 
 - **Multi-threaded processing:** Add support for multi-threaded or multi-process file handling to increase speed, especially on fast SSDs
 - **Improved deduplication:** More advanced solution to handle exact and near duplicates, with configurable speed vs. accuracy trade-offs
