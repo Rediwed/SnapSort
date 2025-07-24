@@ -6,25 +6,26 @@ SnapSort helps you organize and extract personal photos from large, mixed-conten
 
 ## ✨ Key Features
 
-### 📅 Smart Photo Organization
+### 📅 Date-based Photo Organization
 SnapSort automatically organizes your images into a clean folder structure based on when they were taken. The script reads EXIF data from your photos to determine the actual capture date, falling back to file modification dates when EXIF data isn't available. Your photos are sorted into year/month/day folders, making it easy to find specific memories.
 
 ### 🧠 Intelligent Filtering System
-The script includes sophisticated filtering to ensure you only get actual photos, not system icons or application images. It automatically skips system folders and filters out small images that are likely thumbnails or icons. SnapSort defaults to filtering out images less than 600x600 pixels or 50 KB, but allows you to flexibly choose these values.
+The script includes sophisticated filtering to ensure you only get actual photos, not system icons or application images. It automatically skips system folders and filters out small images that are likely thumbnails or icons. SnapSort also defaults to filtering out images less than 600x600 pixels or 50 KB, but allows you to flexibly choose these values.
 
 **Supported image formats:**
+SnapSort supports all image formats; just add the extension to the list at the top of the screen before running it! However by default, the following image formats are considered:
 - `.jpg`, `.jpeg`, `.png`, `.cr2`, `.nef`, `.arw`, `.tif`, `.tiff`, `.rw2`, `.orf`, `.dng`, `.heic`, `.heif`
 
 The script prioritizes images with EXIF data from cameras and smartphones but will also include large, high-resolution images even without EXIF data. For EXIF extraction, it uses `piexif`/Pillow for JPEG/TIFF files and falls back to `exiftool` for other formats or when EXIF is missing.
 
-### ⏳ Comprehensive Progress Tracking
+### ⏳ Progress Tracking
 During operation, SnapSort provides real-time feedback with an animated spinner during initialization and detailed progress indicators. The inline progress display shows:
 - Number of files processed, copied, skipped, and errors
 - Estimated time remaining
 
 All operations are logged comprehensively. The detailed log file records every copied file with source, destination, and size information, every skipped file with explanations, plus errors and summary statistics. This makes it easy to verify operations and troubleshoot any issues.
 
-### 🗂️ Advanced Duplicate Management
+### 🗂️ Basic Duplicate Management
 When SnapSort encounters files with identical names in the destination folder, it performs intelligent duplicate handling:
 - Compares SHA256 hash of both files if names match
 - Skips the file if contents are identical
