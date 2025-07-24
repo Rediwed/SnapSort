@@ -140,6 +140,14 @@ If you want to maximize speed, run one instance per source folder or drive, each
 - **Multi-threaded processing and copying:**  
   Add support for multi-threaded or multi-process file handling to increase speed, especially on fast SSDs or when working with many small files.
 
+- **Improved deduplication**
+  Currently, SnapSort includes a very rudimentary deduplication solution. This solution makes use of SHA256 file hash comparisons to determine whether the image already exists in the destination location. This solution is effective, simple and precise, but has the tendency to result in a high amount of false negatives. Resultingly, you are likely to end up with multiple different versions of (almost exactly) the same image. A future version of SnapSort should include more a advanced deduplication solution, with the possibility to handle exact- and near duplicates. The solution should prioritize speed over accuracy, or allow needs-based granularity.
+   
+- **Faster SHA256 file comparison**
+  Limit the hash calculation for file comparison to the first 1kb of each file, in order to speed up operations of large photos. In some cases, RAW images might be hundreds of Mbs in size, and we do not need the full file to compare the source image with the destination image.
+- **Faster SHA256 file comparison**
+  Limit the hash calculation for file comparison to the first 1kb of each file, in order to speed up operations of large photos. In some cases, RAW images might be hundreds of Mbs in size, and we do not need the full file to compare the source image with the destination image.
+
 - **Command-line argument support for configuration:**  
   Allow users to configure filters, supported image types, and other options directly via command-line arguments (e.g., `photo_organizer.py -s "source" -d "dest" --min-width 800 --min-size 100000`), making the script easier to use in automated workflows.
 
