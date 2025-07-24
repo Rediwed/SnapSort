@@ -5,7 +5,19 @@ Organize and extract your personal photos from large, mixed-content drives with 
 ---
 
 ## Features
+### 📅 Date-based Organization
+- **Organizes copied images into folders by year, month, and day**  
+  Based on the photo's EXIF date or, if missing, the file's modification date.
 
+  ### ⏳ Progress & Logging
+- Animated spinner during file list initialization.
+- Inline progress indicator during processing, showing:
+  - Number of files processed, copied, skipped, errors, and estimated time remaining.
+- **Detailed log file** records:
+  - Every copied file (with source, destination, and size)
+  - Every skipped file (with reason)
+  - Errors and summary statistics
+  
 ### 🚩 Supported Image Formats
 - `.jpg`, `.jpeg`, `.png`, `.cr2`, `.nef`, `.arw`, `.tif`, `.tiff`, `.rw2`, `.orf`, `.dng`, `.heic`, `.heif`
 
@@ -13,7 +25,8 @@ Organize and extract your personal photos from large, mixed-content drives with 
 - **Skips system and application folders:**  
   e.g., `windows`, `program files`, `appdata`, `cache`, etc.
 - **Skips small images:**  
-  Default: less than 600x600 pixels or 50 KB.
+  To filter out non-photos, such as icons, downloaded images, thumbnails and other irrelevant images. We only want to organize/sort your memories!
+  SnapSort defaults to filtering out images less than 600x600 pixels or 50 KB, but allows you to flexibly chose these values.
 - **Prefers images with EXIF data** (from cameras or smartphones), but will also include large, high-resolution images without EXIF.
 - **EXIF extraction:**  
   Uses `piexif`/Pillow for JPEG/TIFF and falls back to `exiftool` for other formats or when EXIF is missing.
@@ -23,19 +36,6 @@ Organize and extract your personal photos from large, mixed-content drives with 
   - If a file with the same name exists, compares the SHA256 hash of both files.
   - If the files are identical, the new file is skipped.
   - If the files differ, the new file is saved with a timestamp appended to the filename (to keep both versions).
-
-### 📅 Date-based Organization
-- **Organizes copied images into folders by year, month, and day**  
-  Based on the photo's EXIF date or, if missing, the file's modification date.
-
-### ⏳ Progress & Logging
-- Animated spinner during file list initialization.
-- Inline progress indicator during processing, showing:
-  - Number of files processed, copied, skipped, errors, and estimated time remaining.
-- **Detailed log file** records:
-  - Every copied file (with source, destination, and size)
-  - Every skipped file (with reason)
-  - Errors and summary statistics
 
 ### 🛡️ Robustness
 - Handles errors gracefully (e.g., unreadable files, missing EXIF, permission issues).
