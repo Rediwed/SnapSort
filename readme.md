@@ -13,7 +13,7 @@ SnapSort automatically organizes your images into a clean folder structure based
 The script includes sophisticated filtering to ensure you only get actual photos, not system icons or application images. It automatically skips system folders and filters out small images that are likely thumbnails or icons. SnapSort also defaults to filtering out images less than 600x600 pixels or 50 KB, but allows you to flexibly choose these values.
 
 **Supported image formats:**
-SnapSort supports all image formats; just add the extension to the list at the top of the screen before running it! However by default, the following image formats are considered:
+SnapSort supports all image formats; just add the extension to the list at the top of '''photo_organizer.py''' before running it! However by default, the following image formats are considered:
 - `.jpg`, `.jpeg`, `.png`, `.cr2`, `.nef`, `.arw`, `.tif`, `.tiff`, `.rw2`, `.orf`, `.dng`, `.heic`, `.heif`
 
 The script prioritizes images with EXIF data from cameras and smartphones but will also include large, high-resolution images even without EXIF data. For EXIF extraction, it uses `piexif`/Pillow for JPEG/TIFF files and falls back to `exiftool` for other formats or when EXIF is missing.
