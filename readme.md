@@ -1,4 +1,4 @@
-# Photo Organizer Script
+# SnapSort
 
 Organize and extract your personal photos from large, mixed-content drives with ease. This script is robust, efficient, and avoids copying system or application images. Below is a summary of its main features and usage.
 
