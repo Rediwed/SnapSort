@@ -70,7 +70,7 @@ The script follows a systematic approach to ensure reliable and efficient proces
 3. **Summary**
    - Prints and logs comprehensive operation statistics including counts, total size, errors, and duration
 
-> **Note:** Log and CSV files are created in your current working directory, not necessarily alongside the script file. Make sure to '''cd''' into the correct directory!
+> **Note:** Log and CSV files are created in your current working directory, not necessarily alongside the script file. Make sure to ```cd``` into the correct directory!
 ---
 
 ## 🚀 Getting Started
