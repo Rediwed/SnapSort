@@ -10,7 +10,7 @@ SnapSort helps you organize and extract personal photos from large, mixed-conten
 SnapSort automatically organizes your images into a clean folder structure based on when they were taken. The script reads EXIF data from your photos to determine the actual capture date, falling back to file modification dates when EXIF data isn't available. Your photos are sorted into year/month/day folders, making it easy to find specific memories.
 
 ### 🧠 Intelligent Filtering System
-The script includes sophisticated filtering to ensure you only get actual photos, not system icons or application images. It automatically skips system folders and filters out small images that are likely thumbnails or icons. SnapSort also defaults to filtering out images less than 600x600 pixels or 50 KB, but allows you to flexibly choose these values.
+The script includes filtering to ensure you only get actual photos, not system icons, application images or thumbnails. It automatically skips system folders and filters out small images that are likely thumbnails or icons. SnapSort also defaults to filtering out images less than 600x600 pixels or 50 KB, but allows you to flexibly choose these values. If enabled, SnapSort will save a CSV file that allows you to manually review SnapSort's decision on a file-by-file basis. This allows you to force process images that SnapSort misclassified.
 
 **Supported image formats:**
 SnapSort supports all image formats; just add the extension to the list at the top of '''photo_organizer.py''' before running it! However by default, the following image formats are considered:
