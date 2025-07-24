@@ -19,7 +19,7 @@ SnapSort supports all image formats; just add the extension to the list at the t
 The script prioritizes images with EXIF data from cameras and smartphones but will also include large, high-resolution images even without EXIF data. For EXIF extraction, it uses `piexif`/Pillow for JPEG/TIFF files and falls back to `exiftool` for other formats or when EXIF is missing.
 
 ### ⏳ Progress Tracking
-During operation, SnapSort provides real-time feedback with an animated spinner during initialization and detailed progress indicators. The inline progress display shows:
+During operation, SnapSort provides real-time feedback with an animated spinner during initialization and detailed progress indicators during processing. The inline progress display shows:
 - Number of files processed, copied, skipped, and errors
 - Estimated time remaining
 
