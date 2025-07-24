@@ -9,7 +9,7 @@ Organize and extract your personal photos from large, mixed-content drives with 
 - **Organizes copied images into folders by year, month, and day**  
   Based on the photo's EXIF date or, if missing, the file's modification date.
 
-  ### ⏳ Progress & Logging
+### ⏳ Progress & Logging
 - Animated spinner during file list initialization.
 - Inline progress indicator during processing, showing:
   - Number of files processed, copied, skipped, errors, and estimated time remaining.
