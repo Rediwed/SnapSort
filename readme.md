@@ -70,6 +70,7 @@ The script follows a systematic approach to ensure reliable and efficient proces
 3. **Summary**
    - Prints and logs comprehensive operation statistics including counts, total size, errors, and duration
 
+> **Note:** Log and CSV files are created in your current working directory, not necessarily alongside the script file. If you prefer logs to always be saved with the script, adjust the script to use absolute paths based on `__file__`.
 ---
 
 ## 🚀 Getting Started
@@ -123,4 +124,4 @@ SnapSort continues to evolve with several enhancements considered:
 
 This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) License. You're free to use and adapt the project for non-commercial purposes with proper attribution to @Rediwed. The script is provided as-is without warranty - please see the LICENSE file for complete details.
 
-> **Note:** Log and CSV files are created in your current working directory, not necessarily alongside the script file. If you prefer logs to always be saved with the script, adjust the script to use absolute paths based on `__file__`.
+
