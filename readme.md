@@ -1,186 +1,125 @@
 # SnapSort - Uncover Forgotten Moments
 
-Organize and extract your personal photos from large, mixed-content drives with ease. This script is robust, efficient, and avoids copying system or application images. Below is a summary of its main features and usage.
+SnapSort helps you organize and extract personal photos from large, mixed-content drives with intelligent filtering and robust processing. The script automatically sorts images by date while avoiding system files and application images, making it perfect for recovering memories from old hard drives or organizing large photo collections.
 
 ---
 
-## Features
-### 📅 Date-based Organization
-- **Organizes copied images into folders by year, month, and day**  
-  Based on the photo's EXIF date or, if missing, the file's modification date.
+## ✨ Key Features
 
-### ⏳ Progress & Logging
-- Animated spinner during file list initialization.
-- Inline progress indicator during processing, showing:
-  - Number of files processed, copied, skipped, errors, and estimated time remaining.
-- **Detailed log file** records:
-  - Every copied file (with source, destination, and size)
-  - Every skipped file (with reason)
-  - Errors and summary statistics
-  
-### 🚩 Supported Image Formats
+### 📅 Smart Photo Organization
+SnapSort automatically organizes your images into a clean folder structure based on when they were taken. The script reads EXIF data from your photos to determine the actual capture date, falling back to file modification dates when EXIF data isn't available. Your photos are sorted into year/month/day folders, making it easy to find specific memories.
+
+### 🧠 Intelligent Filtering System
+The script includes sophisticated filtering to ensure you only get actual photos, not system icons or application images. It automatically skips system folders and filters out small images that are likely thumbnails or icons. SnapSort defaults to filtering out images less than 600x600 pixels or 50 KB, but allows you to flexibly choose these values.
+
+**Supported image formats:**
 - `.jpg`, `.jpeg`, `.png`, `.cr2`, `.nef`, `.arw`, `.tif`, `.tiff`, `.rw2`, `.orf`, `.dng`, `.heic`, `.heif`
 
-### 🧠 Smart Filtering
-- **Skips system and application folders:**  
-  e.g., `windows`, `program files`, `appdata`, `cache`, etc.
-- **Skips small images:**  
-  To filter out non-photos, such as icons, downloaded images, thumbnails and other irrelevant images. We only want to organize/sort your memories!
-  SnapSort defaults to filtering out images less than 600x600 pixels or 50 KB, but allows you to flexibly chose these values.
-- **Prefers images with EXIF data** (from cameras or smartphones), but will also include large, high-resolution images without EXIF.
-- **EXIF extraction:**  
-  Uses `piexif`/Pillow for JPEG/TIFF and falls back to `exiftool` for other formats or when EXIF is missing.
+The script prioritizes images with EXIF data from cameras and smartphones but will also include large, high-resolution images even without EXIF data. For EXIF extraction, it uses `piexif`/Pillow for JPEG/TIFF files and falls back to `exiftool` for other formats or when EXIF is missing.
 
-### 🗂️ Duplicate Handling
-- **Checks for existing files in the destination folder:**
-  - If a file with the same name exists, compares the SHA256 hash of both files.
-  - If the files are identical, the new file is skipped.
-  - If the files differ, the new file is saved with a timestamp appended to the filename (to keep both versions).
+### ⏳ Comprehensive Progress Tracking
+During operation, SnapSort provides real-time feedback with an animated spinner during initialization and detailed progress indicators. The inline progress display shows:
+- Number of files processed, copied, skipped, and errors
+- Estimated time remaining
 
-### 🛡️ Robustness
-- Handles errors gracefully (e.g., unreadable files, missing EXIF, permission issues).
-- Logs all errors for later review.
+All operations are logged comprehensively. The detailed log file records every copied file with source, destination, and size information, every skipped file with explanations, plus errors and summary statistics. This makes it easy to verify operations and troubleshoot any issues.
+
+### 🗂️ Advanced Duplicate Management
+When SnapSort encounters files with identical names in the destination folder, it performs intelligent duplicate handling:
+- Compares SHA256 hash of both files if names match
+- Skips the file if contents are identical
+- Saves with timestamp appended if files differ (preserving both versions)
+
+The script handles errors gracefully, including unreadable files, missing EXIF data, and permission issues, logging all errors for later review.
 
 ---
 
-## **New Features**
+## 🔧 Enhanced Workflow Management
 
-### 📝 CSV Logging & Config
+### 📝 CSV Logging and Configuration
+SnapSort generates detailed CSV logs that serve multiple purposes beyond simple record-keeping. These files contain complete configuration information embedded within them, making each log self-contained and portable. Config and filtering heuristics are saved in the CSV as a single cell in the second row, making it robust and spreadsheet-friendly.
 
-- **CSV logging** can be enabled for review, manual copy, and resume operations.
-- **Config and filtering heuristics are saved in the CSV** as a single cell in the second row, making the CSV robust and spreadsheet-friendly.
-- **Automatic config loading:**  
-  When running in manual or resume mode, the script reads all config values from the CSV and applies them automatically.
-- **Future-proof:**  
-  If new config items are added, the script will prompt for any missing values, ensuring compatibility with older CSV /project files.
+When running in manual or resume mode, the script automatically reads all config values from the CSV and applies them, ensuring consistency across sessions. The system is future-proof - if new config items are added, the script will prompt for any missing values, maintaining compatibility with older CSV files.
 
-### 🔄 Three Operation Modes
+### 🔄 Flexible Operation Modes
+SnapSort offers three distinct operation modes to handle different scenarios:
 
-- **Normal Copy:**  
-  Scans and processes all files according to the current heuristics.
-- **Manual Copy:**  
-  Only copies files explicitly marked in the CSV (`copy_anyway == yes`).  
-  Destination paths are reconstructed if missing, using the config from the CSV.
-- **Resume Copy:**  
-  Continues a previous copy operation by skipping files already listed in the CSV.  
-  Reads and applies all config and heuristics from the CSV.
+- **Normal Copy:** Scans and processes all files according to current heuristics
+- **Manual Copy:** Only copies files explicitly marked in the CSV (`copy_anyway == yes`), with destination paths reconstructed automatically using config from the CSV
+- **Resume Copy:** Continues a previous operation by skipping files already listed in the CSV, reading and applying all config and heuristics from the existing file
 
 ---
 
-## How It Works
+## ⚙️ How SnapSort Works
+
+The script follows a systematic approach to ensure reliable and efficient processing:
 
 1. **Initialization**
-   - Scans the source directory for supported image files, showing a spinner while building the file list.
-   - Loads config and heuristics from the CSV if running in manual or resume mode.
+   - Scans the source directory for supported image files with animated spinner feedback
+   - Loads config and heuristics from CSV if running in manual or resume mode
 
-2. **Processing**
-   - For each image:
-     - Skips if in a system/app folder or too small.
-     - Checks for EXIF data (using `piexif`/Pillow or `exiftool`).
-     - If EXIF is missing but the image is large/high-res, still copies it.
-     - Determines the destination folder based on the date.
-     - Checks for duplicates in the destination:
-       - If identical, skips.
-       - If different, appends a timestamp to the filename.
-     - Copies the file and logs the action.
+2. **Processing** - For each image:
+   - Skips files in system/app folders or those too small
+   - Checks for EXIF data using `piexif`/Pillow or `exiftool`
+   - Includes large/high-res images even if EXIF is missing
+   - Determines destination folder based on date
+   - Performs duplicate checking with hash comparison
+   - Copies file and logs the action
 
 3. **Summary**
-   - Prints and logs a summary of the operation, including counts, total size, errors, and duration.
+   - Prints and logs comprehensive operation statistics including counts, total size, errors, and duration
 
 ---
 
-## Customization
+## 🚀 Getting Started
 
-- Change filtering heuristics (e.g., minimum size, resolution, or system folders) by editing the constants at the top of the script.
-- Add or remove supported image formats by editing the `SUPPORTED_EXTENSIONS` tuple.
-- Add new config items to the script and they will be automatically handled in future CSVs.
-
----
-
-## Requirements
-
+### 📋 Requirements
 - Python 3.x
 - [`Pillow`](https://pypi.org/project/Pillow/)
 - [`piexif`](https://pypi.org/project/piexif/)
 - [`exiftool`](https://exiftool.org/) (must be installed and in your PATH)
 
----
+### 💻 Usage
+1. Set the `SOURCE_DIR` and `DEST_DIR` variables at the top of the script, or let the script prompt you
+2. Run the script: `python3 photo_organizer.py`
+3. Choose your desired operation mode
+4. Review the generated `photo_organizer.log` and `photo_organizer.csv` files for details
 
-## Usage
-
-1. Set the `SOURCE_DIR` and `DEST_DIR` variables at the top of the script, or let the script prompt you.
-2. Run the script:
-   ```bash
-   python3 photo_organizer.py
-   ```
-3. Choose the desired mode:
-   - **Normal copy** (scan and process all)
-   - **Manual copy** (copy only files marked in CSV)
-   - **Resume copy** (continue where CSV left off)
-4. Review the `photo_organizer.log` and `photo_organizer.csv` files for details on copied/skipped files, config, and any errors.
+### 🎛️ Customization Options
+You can easily customize SnapSort for your specific needs by modifying the constants at the top of the script. Change filtering heuristics like minimum size, resolution, or system folders to exclude. Add or remove supported image formats by editing the `SUPPORTED_EXTENSIONS` tuple. New config items added to the script will be automatically handled in future CSV files.
 
 ---
 
-## Running Multiple Instances
+## 🔀 Parallel Processing
 
-You can run multiple instances of this script at the same time to process different folders or drives in parallel.  
-**However:**
+You can run multiple instances of SnapSort simultaneously to process different folders or drives in parallel, which can significantly speed up large operations. However, there are important considerations:
 
-- If multiple instances use the **same destination folder** or **log/CSV files**, you may get duplicate files (with timestamped names) and interleaved log entries.
-- For best results, use a **different destination and log/CSV file for each instance**, or split your workload so each instance processes a unique part of your photo collection.
-- Directory creation and file copying are safe for concurrent use, but log/CSV files may be harder to read if shared. Future versions of Photo Organizer may handle this more gracefully.
+- Multiple instances using the same destination folder or log/CSV files may create duplicate files (with timestamped names) and interleaved log entries
+- For best results, use different destination and log/CSV files for each instance
+- Directory creation and file copying are safe for concurrent use, but shared log/CSV files may be harder to read
 
-**Tip:**  
-If you want to maximize speed, run one instance per source folder or drive, each with its own destination and log files.
+**Tip:** Run one instance per source folder or drive, each with its own destination and log files for maximum speed and clarity.
 
 ---
 
-## Backlog / Planned Future Changes
+## 🔮 Future Development
 
-- **Multi-threaded processing and copying:**  
-  Add support for multi-threaded or multi-process file handling to increase speed, especially on fast SSDs or when working with many small files.
+SnapSort continues to evolve with several enhancements planned:
 
-- **Improved deduplication**
-  Currently, SnapSort includes a very rudimentary deduplication solution. This solution makes use of SHA256 file hash comparisons to determine whether the image already exists in the destination location. This solution is effective, simple and precise, but has the tendency to result in a high amount of false negatives. Resultingly, you are likely to end up with multiple different versions of (almost exactly) the same image. A future version of SnapSort should include more a advanced deduplication solution, with the possibility to handle exact- and near duplicates. The solution should prioritize speed over accuracy, or allow needs-based granularity.
-   
-- **Faster SHA256 file comparison**
-  Limit the hash calculation for file comparison to the first 1kb of each file, in order to speed up operations of large photos. In some cases, RAW images might be hundreds of Mbs in size, and we do not need the full file to compare the source image with the destination image.
-- **Faster SHA256 file comparison**
-  Limit the hash calculation for file comparison to the first 1kb of each file, in order to speed up operations of large photos. In some cases, RAW images might be hundreds of Mbs in size, and we do not need the full file to compare the source image with the destination image.
-
-- **Command-line argument support for configuration:**  
-  Allow users to configure filters, supported image types, and other options directly via command-line arguments (e.g., `photo_organizer.py -s "source" -d "dest" --min-width 800 --min-size 100000`), making the script easier to use in automated workflows.
-
-- **Automatic drive handling and notifications:**  
-  Notify the user when a drive is finished, automatically and safely eject the drive, and optionally start processing automatically when a new drive is connected.
-
-- **In-memory destination tree for faster duplicate detection:**  
-  Build an in-memory representation of the destination folder/file structure at startup, so the script can quickly check for duplicates before attempting to copy, instead of checking the destination on disk for each source file.
-
-- **Project-level summary and reporting:**  
-  Provide a summary and statistics for the entire photo organization project, not just for a single run or task. This could include totals across multiple drives or sessions, and help track overall progress.
-
-- **Analyze-only mode:**  
-  Add a fourth operation mode that only analyzes the source and builds the `photo_organizer.csv` file, without copying any files. The user can then manually review and edit the CSV, including the action Photo Organizer would take for each file.
-
-- **Improved script structure and packaging:**  
-  Refactor the script to make better use of Python features (such as classes and modules), and package it so it can be imported into other Python projects.  
-  Possible use cases:
-  - Integrate photo organization into a larger digital asset management workflow.
-  - Use the filtering and duplicate detection logic in custom scripts or GUIs.
-  - Build automated pipelines for photo backup, deduplication, or cloud upload.
+- **Multi-threaded processing:** Add support for multi-threaded or multi-process file handling to increase speed, especially on fast SSDs
+- **Improved deduplication:** More advanced solution to handle exact and near duplicates, with configurable speed vs. accuracy trade-offs
+- **Faster hash comparison:** Limit SHA256 calculation to first 1KB of files for faster processing of large RAW images
+- **Command-line arguments:** Allow configuration via command-line for easier automation
+- **Automatic drive handling:** Notifications when drives finish, safe ejection, and auto-start when new drives connect
+- **In-memory destination tree:** Faster duplicate detection through memory-cached folder structure
+- **Project-level reporting:** Summary statistics across multiple drives or sessions
+- **Analyze-only mode:** Build CSV without copying files for manual review and editing
+- **Improved architecture:** Better Python structure with classes and modules for integration into other projects
 
 ---
 
-## License
+## 📄 License and Support
 
-This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) License. See the [LICENSE](./LICENSE) file for details.
+This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) License. You're free to use and adapt the project for non-commercial purposes with proper attribution to @Rediwed. The script is provided as-is without warranty - please see the LICENSE file for complete details.
 
-- **Attribution:** If you use or adapt this project, please credit @Rediwed.
-- **Non-commercial:** You may not use this project or its derivatives for commercial purposes.
-
-This script is provided as-is, without warranty. For more information, see the LICENSE file.
-
-> **Note:**  
-> Log and CSV files are created in the folder where you run the script (your current working directory), not necessarily in the script’s own folder.  
-> If you want logs and CSVs to always be saved alongside the script, adjust the script to use absolute paths based on `__file__`.
+> **Note:** Log and CSV files are created in your current working directory, not necessarily alongside the script file. If you prefer logs to always be saved with the script, adjust the script to use absolute paths based on `__file__`.
