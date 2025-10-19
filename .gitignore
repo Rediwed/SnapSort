@@ -54,3 +54,7 @@ coverage.xml
 # System files
 .DS_Store
 Thumbs.db
+
+# Virtualenvs
+.venv/
+venv/

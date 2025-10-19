@@ -296,6 +296,21 @@ def file_hash(filepath, blocksize=65536):
         return None
 
 if __name__ == "__main__":
+    # Dependency check: provide a clear message if required packages are missing
+    missing_deps = []
+    try:
+        import PIL  # noqa: F401
+    except Exception:
+        missing_deps.append("Pillow")
+    try:
+        import piexif  # noqa: F401
+    except Exception:
+        missing_deps.append("piexif")
+
+    if missing_deps:
+        print("Missing required Python packages: " + ", ".join(missing_deps))
+        print("Install them with: python3 -m pip install -r requirements.txt")
+        sys.exit(1)
     print("Choose mode:")
     print("[1] Normal copy (scan and process all)")
     print("[2] Manual copy (copy only files marked in CSV)")
