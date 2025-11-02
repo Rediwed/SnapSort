@@ -51,6 +51,9 @@ coverage.xml
 *.log
 *.csv
 
+# Local test assets
+test_data/
+
 # System files
 .DS_Store
 Thumbs.db

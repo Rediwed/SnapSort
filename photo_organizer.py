@@ -13,6 +13,7 @@ from datetime import datetime
 from photo_utils import copy_photo_with_metadata
 from logging_utils import log_message, log_csv, ensure_csv_config
 from path_utils import construct_dest_path
+from dedup_utils import DeduplicationIndex
 
 # --- CONFIGURABLE PARAMETERS ---
 SOURCE_DIR = ""
@@ -30,6 +31,10 @@ SYSTEM_FOLDERS = [
 ENABLE_CSV_LOG = False
 CSV_LOG_FILE = LOG_FILE.replace('.log', '.csv') if LOG_FILE else "photo_organizer.csv"
 FLUSH_INTERVAL = 1000
+
+DEDUP_STRICT_THRESHOLD = 90.0
+DEDUP_LOG_THRESHOLD = 70.0
+DEDUP_PARTIAL_HASH_BYTES = 1024
 
 # Read version from VERSION file
 with open(os.path.join(os.path.dirname(__file__), "VERSION")) as f:
@@ -89,17 +94,31 @@ def load_config_from_csv(csv_path):
     if not MIN_FILESIZE or MIN_FILESIZE < 1:
         MIN_FILESIZE = int(input("Enter minimum file size in bytes (default 51200 for 50KB): ").strip() or "51200")
 
-def print_progress(processed, total, copied, skipped, errors, start_time):
+def print_progress(processed, total, copied, skipped, errors, start_time, scan_complete=None):
     """Print the progress of the photo organizing process."""
     elapsed = time.time() - start_time
-    avg_time = elapsed / processed if processed else 0
-    remaining = total - processed
-    est_remaining = avg_time * remaining
-    progress = (
-        f"\rProcessing {processed}/{total} "
-        f"({copied} copied, {skipped} skipped, {errors} errors) "
-        f"ETA: {int(est_remaining // 60):02d}:{int(est_remaining % 60):02d} remaining..."
-    )
+
+    status_prefix = ""
+    if scan_complete is not None:
+        status = "completed" if scan_complete else "in-progress"
+        status_prefix = f"Scanning: {status} | "
+
+    if total is not None and total > 0:
+        avg_time = elapsed / processed if processed else 0
+        remaining = max(total - processed, 0)
+        est_remaining = avg_time * remaining
+        progress = (
+            f"\r{status_prefix}Processing {processed}/{total} "
+            f"({copied} copied, {skipped} skipped, {errors} errors) "
+            f"ETA: {int(est_remaining // 60):02d}:{int(est_remaining % 60):02d} remaining..."
+        )
+    else:
+        minutes, seconds = divmod(int(elapsed), 60)
+        progress = (
+            f"\r{status_prefix}Processed {processed} files "
+            f"({copied} copied, {skipped} skipped, {errors} errors) "
+            f"Elapsed: {minutes:02d}:{seconds:02d}"
+        )
     print(progress, end="", flush=True)
 
 def scan_and_organize_photos(processed_set=None):
@@ -113,24 +132,17 @@ def scan_and_organize_photos(processed_set=None):
     errors = 0
     end_reason = "Completed successfully."
 
-    spinner = ['-', '\\', '|', '/']
-    spinner_index = 0
-    print("Initializing file list... ", end="", flush=True)
-    all_files = []
-    last_update = time.time()
-    for root, dirs, files in os.walk(SOURCE_DIR):
-        for file in files:
-            if file.lower().endswith(SUPPORTED_EXTENSIONS):
-                all_files.append(os.path.join(root, file))
-        if time.time() - last_update > 0.1:
-            print(f"\rInitializing file list... {spinner[spinner_index % len(spinner)]}", end="", flush=True)
-            spinner_index += 1
-            last_update = time.time()
-    print(f"\rInitializing file list... done.{' ' * 10}")
+    print("Scanning and processing files...", flush=True)
 
-    total_files = len(all_files)
+    total_files = None
     processed_files = 0
     flush_counter = 0
+
+    dedup_index = DeduplicationIndex(
+        strict_threshold=DEDUP_STRICT_THRESHOLD,
+        log_threshold=DEDUP_LOG_THRESHOLD,
+        partial_hash_bytes=DEDUP_PARTIAL_HASH_BYTES,
+    )
 
     if not os.path.isdir(SOURCE_DIR):
         end_reason = f"Critical error: Source directory does not exist: {SOURCE_DIR}"
@@ -146,50 +158,67 @@ def scan_and_organize_photos(processed_set=None):
         log_message(end_reason)
         return
 
-    for src_path in all_files:
-        if processed_set and src_path in processed_set:
-            continue
-        processed_files += 1
-        print_progress(processed_files, total_files, images_copied, images_skipped, errors, start_time)
-        try:
-            result, dest_path = copy_photo_with_metadata(
-                src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
-                SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
-                file_hash, log_csv, log_message
-            )
-            if result == "copied":
-                images_copied += 1
-                if dest_path:
-                    total_size += os.path.getsize(dest_path)
-            elif result == "skipped":
-                images_skipped += 1
-            elif result == "error":
-                errors += 1
-        except Exception as e:
-            log_message(f"Error processing {src_path}: {e}")
-            if ENABLE_CSV_LOG:
-                # If dest_path is defined before the exception, pass it; otherwise, leave blank
-                log_csv("error", f"processing error ({e})", src_path, dest_path if 'dest_path' in locals() else "")
-            errors += 1
-            continue
+    seeded = dedup_index.seed_from_directory(DEST_DIR, SUPPORTED_EXTENSIONS, log_message)
+    if seeded:
+        log_message(f"Dedup index seeded with {seeded} existing files from destination.")
 
-        flush_counter += 1
-        if flush_counter % FLUSH_INTERVAL == 0:
+    for root, dirs, files in os.walk(SOURCE_DIR):
+        for file in files:
+            if not file.lower().endswith(SUPPORTED_EXTENSIONS):
+                continue
+            src_path = os.path.join(root, file)
+            if processed_set and src_path in processed_set:
+                continue
+            dest_path = None
             try:
-                with open(LOG_FILE, "a") as logf:
-                    logf.flush()
-                    os.fsync(logf.fileno())
-            except Exception:
-                pass
-            if ENABLE_CSV_LOG:
+                result, dest_path = copy_photo_with_metadata(
+                    src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
+                    SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
+                    file_hash, log_csv, log_message,
+                    dedup_index=dedup_index
+                )
+                if result == "copied":
+                    images_copied += 1
+                    if dest_path:
+                        total_size += os.path.getsize(dest_path)
+                elif result == "skipped":
+                    images_skipped += 1
+                elif result == "error":
+                    errors += 1
+            except Exception as e:
+                log_message(f"Error processing {src_path}: {e}")
+                if ENABLE_CSV_LOG:
+                    log_csv("error", f"processing error ({e})", src_path, dest_path or "")
+                errors += 1
+                continue
+
+            processed_files += 1
+            print_progress(
+                processed_files, total_files, images_copied, images_skipped, errors,
+                start_time, scan_complete=False
+            )
+
+            flush_counter += 1
+            if flush_counter % FLUSH_INTERVAL == 0:
                 try:
-                    with open(CSV_LOG_FILE, "a") as csvfile:
-                        csvfile.flush()
-                        os.fsync(csvfile.fileno())
+                    with open(LOG_FILE, "a") as logf:
+                        logf.flush()
+                        os.fsync(logf.fileno())
                 except Exception:
                     pass
-            gc.collect()
+                if ENABLE_CSV_LOG:
+                    try:
+                        with open(CSV_LOG_FILE, "a") as csvfile:
+                            csvfile.flush()
+                            os.fsync(csvfile.fileno())
+                    except Exception:
+                        pass
+                gc.collect()
 
+    print_progress(
+        processed_files, total_files, images_copied, images_skipped, errors,
+        start_time, scan_complete=True
+    )
     print("\r" + " " * 80 + "\r", end="")
     duration = time.time() - start_time
     summary = (
@@ -210,6 +239,12 @@ def manual_copy_from_csv():
     csv_path = csv_path.strip("'\"")
     load_config_from_csv(csv_path)
     ensure_csv_config()
+    dedup_index = DeduplicationIndex(
+        strict_threshold=DEDUP_STRICT_THRESHOLD,
+        log_threshold=DEDUP_LOG_THRESHOLD,
+        partial_hash_bytes=DEDUP_PARTIAL_HASH_BYTES,
+    )
+    dedup_index.seed_from_directory(DEST_DIR, SUPPORTED_EXTENSIONS, log_message)
     to_copy = []
     flush_counter = 0
 
@@ -232,7 +267,8 @@ def manual_copy_from_csv():
             src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
             SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
             file_hash, log_csv, log_message,
-            force_copy=(row.get('copy_anyway', '').strip().lower() in ['yes', '1'])
+            force_copy=(row.get('copy_anyway', '').strip().lower() in ['yes', '1']),
+            dedup_index=dedup_index
         )
         if result == "copied":
             copied += 1
