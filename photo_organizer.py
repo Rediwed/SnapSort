@@ -43,10 +43,13 @@ with open(os.path.join(os.path.dirname(__file__), "VERSION")) as f:
 def prompt_if_needed():
     """Prompt the user for configuration parameters if not already set."""
     global SOURCE_DIR, DEST_DIR, LOG_FILE, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE, ENABLE_CSV_LOG
+    
     if not SOURCE_DIR:
         SOURCE_DIR = input("Enter source directory: ").strip().strip("'\"")
+    
     if not DEST_DIR:
         DEST_DIR = input("Enter destination directory: ").strip().strip("'\"")
+    
     if not LOG_FILE:
         LOG_FILE = input("Enter log file name (default: photo_organizer.log): ").strip().strip("'\"") or "photo_organizer.log"
     if not MIN_WIDTH or MIN_WIDTH < 1:
@@ -83,10 +86,14 @@ def load_config_from_csv(csv_path):
         MIN_HEIGHT = int(found["MIN_HEIGHT"])
     if "MIN_FILESIZE" in found:
         MIN_FILESIZE = int(found["MIN_FILESIZE"])
+    
+    # Prompt for missing configuration values
     if not SOURCE_DIR:
         SOURCE_DIR = input("Enter source directory: ").strip().strip("'\"")
+    
     if not DEST_DIR:
         DEST_DIR = input("Enter destination directory: ").strip().strip("'\"")
+    
     if not MIN_WIDTH or MIN_WIDTH < 1:
         MIN_WIDTH = int(input("Enter minimum image width (default 600): ").strip() or "600")
     if not MIN_HEIGHT or MIN_HEIGHT < 1:
@@ -319,6 +326,31 @@ def resume_copy_from_csv():
             processed.add(row['src_path'])
     scan_and_organize_photos(processed_set=processed)
 
+def test_mode():
+    """Run the photo organizer in test mode using test data folders."""
+    global SOURCE_DIR, DEST_DIR
+    
+    test_source = os.path.join(os.path.dirname(__file__), "test_data", "source_photos")
+    test_dest = os.path.join(os.path.dirname(__file__), "test_data", "dest_photos")
+    
+    # Force use of test directories
+    SOURCE_DIR = test_source
+    DEST_DIR = test_dest
+    
+    print(f"Test mode activated:")
+    print(f"Source: {SOURCE_DIR}")
+    print(f"Destination: {DEST_DIR}")
+    print()
+    
+    scan_and_organize_photos()
+
+def check_test_folders():
+    """Check if test data folders exist."""
+    test_source = os.path.join(os.path.dirname(__file__), "test_data", "source_photos")
+    test_dest = os.path.join(os.path.dirname(__file__), "test_data", "dest_photos")
+    
+    return os.path.isdir(test_source) and os.path.isdir(test_dest)
+
 def file_hash(filepath, blocksize=65536):
     """Compute the SHA-256 hash of a file."""
     import hashlib
@@ -347,14 +379,25 @@ if __name__ == "__main__":
         print("Missing required Python packages: " + ", ".join(missing_deps))
         print("Install them with: python3 -m pip install -r requirements.txt")
         sys.exit(1)
+    
+    # Check if test mode is available
+    test_available = check_test_folders()
+    
     print("Choose mode:")
     print("[1] Normal copy (scan and process all)")
     print("[2] Manual copy (copy only files marked in CSV)")
     print("[3] Resume copy (continue where CSV left off)")
-    mode = input("Mode (1/2/3): ").strip()
+    if test_available:
+        print("[T] Test mode (use test_data folders)")
+        mode = input("Mode (1/2/3/T): ").strip().lower()
+    else:
+        mode = input("Mode (1/2/3): ").strip().lower()
+    
     if mode == "2":
         manual_copy_from_csv()
     elif mode == "3":
         resume_copy_from_csv()
+    elif mode == "t" and test_available:
+        test_mode()
     else:
         scan_and_organize_photos()
