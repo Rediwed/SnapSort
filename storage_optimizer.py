@@ -14,24 +14,50 @@ import shutil
 def detect_storage_type(path: str) -> str:
     """Detect storage type (HDD vs SSD vs NVMe) for optimization."""
     try:
-        # Try Linux-specific detection
+        # Strategy 1: Check if NVMe devices exist (better method)
+        try:
+            if os.path.exists('/dev/nvme0n1') or any(os.path.exists(f'/dev/nvme{i}n1') for i in range(5)):
+                return 'nvme'
+        except Exception:
+            pass
+        
+        # Strategy 2: Check the actual device
         result = subprocess.run(['df', path], capture_output=True, text=True)
         if result.returncode == 0:
             device = result.stdout.split('\n')[1].split()[0]
             
-            # NVMe detection
+            # Direct NVMe detection
             if 'nvme' in device.lower():
                 return 'nvme'
             
-            # Check if rotational (HDD) vs non-rotational (SSD)
-            device_name = device.split('/')[-1].rstrip('0123456789')
-            rotational_path = f'/sys/block/{device_name}/queue/rotational'
+            # Handle LVM/mapper by checking underlying devices
+            if '/dev/mapper/' in device:
+                try:
+                    mapper_name = device.split('/')[-1]
+                    slaves_path = f'/sys/block/{mapper_name}/slaves'
+                    if os.path.exists(slaves_path):
+                        slaves = os.listdir(slaves_path)
+                        for slave in slaves:
+                            if 'nvme' in slave.lower():
+                                return 'nvme'
+                            # Check if rotational
+                            rot_path = f'/sys/block/{slave}/queue/rotational'
+                            if os.path.exists(rot_path):
+                                with open(rot_path, 'r') as f:
+                                    return 'hdd' if f.read().strip() == '1' else 'ssd'
+                except Exception:
+                    pass
             
-            if os.path.exists(rotational_path):
-                with open(rotational_path, 'r') as f:
-                    is_rotational = f.read().strip() == '1'
+            # Direct device rotational check
+            else:
+                device_name = device.split('/')[-1].rstrip('0123456789')
+                rotational_path = f'/sys/block/{device_name}/queue/rotational'
                 
-                return 'hdd' if is_rotational else 'ssd'
+                if os.path.exists(rotational_path):
+                    with open(rotational_path, 'r') as f:
+                        is_rotational = f.read().strip() == '1'
+                    
+                    return 'hdd' if is_rotational else 'ssd'
         
         # Check for external drives
         if any(indicator in path.lower() for indicator in ['/media/', '/mnt/', 'usb']):

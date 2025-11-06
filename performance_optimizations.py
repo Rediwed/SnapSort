@@ -181,49 +181,168 @@ def create_memory_efficient_dedup_index():
     pass
 
 
-# Configuration for different SSD types
-SSD_OPTIMIZATIONS = {
+# Configuration for different storage types
+STORAGE_OPTIMIZATIONS = {
     'nvme_gen4': {
         'max_workers': 16,
         'batch_size': 100,
         'hash_bytes': 16384,
-        'concurrent_copies': 8
+        'concurrent_copies': 8,
+        'enable_multithreading': True,
+        'sequential_processing': False,
+        'description': 'High-end NVMe Gen4 SSD'
     },
     'nvme_gen3': {
         'max_workers': 12,
         'batch_size': 75,
         'hash_bytes': 8192,
-        'concurrent_copies': 6
+        'concurrent_copies': 6,
+        'enable_multithreading': True,
+        'sequential_processing': False,
+        'description': 'NVMe Gen3 SSD'
     },
     'sata_ssd': {
         'max_workers': 8,
         'batch_size': 50,
         'hash_bytes': 4096,
-        'concurrent_copies': 4
+        'concurrent_copies': 4,
+        'enable_multithreading': True,
+        'sequential_processing': False,
+        'description': 'SATA SSD'
+    },
+    'hdd_7200rpm': {
+        'max_workers': 1,
+        'batch_size': 10,
+        'hash_bytes': 4096,
+        'concurrent_copies': 1,
+        'enable_multithreading': False,
+        'sequential_processing': True,
+        'description': '7200 RPM HDD (optimized for sequential access)'
+    },
+    'hdd_5400rpm': {
+        'max_workers': 1,
+        'batch_size': 5,
+        'hash_bytes': 2048,
+        'concurrent_copies': 1,
+        'enable_multithreading': False,
+        'sequential_processing': True,
+        'description': '5400 RPM HDD (slower mechanical drive)'
+    },
+    'usb_external': {
+        'max_workers': 2,
+        'batch_size': 15,
+        'hash_bytes': 2048,
+        'concurrent_copies': 1,
+        'enable_multithreading': False,
+        'sequential_processing': True,
+        'description': 'External USB drive (conservative settings)'
     },
     'default': {
         'max_workers': 4,
         'batch_size': 25,
         'hash_bytes': 1024,
-        'concurrent_copies': 2
+        'concurrent_copies': 2,
+        'enable_multithreading': True,
+        'sequential_processing': False,
+        'description': 'Default conservative settings'
     }
 }
 
 
 def detect_storage_type(path: str) -> str:
     """Detect storage type to optimize settings."""
-    # This is a simplified detection - in practice, you'd check:
-    # - Drive model information
-    # - Benchmark read/write speeds
-    # - Check if it's NVMe, SATA SSD, or HDD
+    import shutil
+    import subprocess
+    
+    try:
+        # Strategy 1: Check for NVMe devices first
+        try:
+            # Check for common NVMe device paths
+            if os.path.exists('/dev/nvme0n1') or any(os.path.exists(f'/dev/nvme{i}n1') for i in range(5)):
+                # We have NVMe - assume it's the primary storage
+                return 'nvme_gen3'
+        except Exception:
+            pass
+        
+        # Strategy 2: Use df to get device and trace back to physical device
+        try:
+            result = subprocess.run(['df', path], capture_output=True, text=True)
+            if result.returncode == 0:
+                device = result.stdout.split('\n')[1].split()[0]
+                
+                # Handle LVM/mapper devices by finding underlying device
+                if '/dev/mapper/' in device:
+                    # Try to find the underlying physical device through LVM
+                    try:
+                        lvm_result = subprocess.run(['sudo', 'lvdisplay', device], 
+                                                  capture_output=True, text=True)
+                        if 'nvme' in lvm_result.stdout.lower():
+                            return 'nvme_gen3'
+                    except Exception:
+                        pass
+                    
+                    # Alternative: check /sys/block for mapper devices
+                    try:
+                        mapper_name = device.split('/')[-1]
+                        slaves_path = f'/sys/block/{mapper_name}/slaves'
+                        if os.path.exists(slaves_path):
+                            slaves = os.listdir(slaves_path)
+                            for slave in slaves:
+                                if 'nvme' in slave.lower():
+                                    return 'nvme_gen3'
+                                # Check if rotational
+                                rot_path = f'/sys/block/{slave}/queue/rotational'
+                                if os.path.exists(rot_path):
+                                    with open(rot_path, 'r') as f:
+                                        if f.read().strip() == '0':
+                                            return 'sata_ssd'
+                                        else:
+                                            return 'hdd_7200rpm'
+                    except Exception:
+                        pass
+                
+                # Direct device check
+                elif 'nvme' in device.lower():
+                    return 'nvme_gen3'
+                
+                # Check if it's rotational for direct devices
+                else:
+                    device_name = device.split('/')[-1].rstrip('0123456789')
+                    rotational_path = f'/sys/block/{device_name}/queue/rotational'
+                    
+                    if os.path.exists(rotational_path):
+                        with open(rotational_path, 'r') as f:
+                            is_rotational = f.read().strip() == '1'
+                        
+                        if is_rotational:
+                            return 'hdd_7200rpm'
+                        else:
+                            return 'sata_ssd'
+                
+        except Exception:
+            pass
+        
+        # Strategy 3: Check if it's likely an external drive
+        if '/media/' in path or '/mnt/' in path or 'usb' in path.lower():
+            return 'usb_external'
+            
+    except Exception:
+        pass
+    
     return 'default'
 
 
 def get_optimal_settings(source_path: str) -> Dict[str, Any]:
     """Get optimal settings based on detected storage."""
     storage_type = detect_storage_type(source_path)
-    return SSD_OPTIMIZATIONS.get(storage_type, SSD_OPTIMIZATIONS['default'])
+    return STORAGE_OPTIMIZATIONS.get(storage_type, STORAGE_OPTIMIZATIONS['default'])
 
+
+# Better HDD configuration
+ENABLE_FAST_HASH = True        # ✅ Still beneficial
+FAST_HASH_BYTES = 4096        # ✅ Smaller chunks, less seeking  
+ENABLE_MULTITHREADING = False  # ❌ Avoid for HDDs
+SEQUENTIAL_PROCESSING = True   # ✅ Better for mechanical drives
 
 # Example integration points for the main photo_organizer.py:
 
@@ -250,7 +369,73 @@ def optimized_scan_and_organize_photos(source_dir: str, dest_dir: str, **config)
         pass  # Implementation continues...
 
 
+def configure_for_storage_type(source_path: str) -> Dict[str, Any]:
+    """
+    Detect storage type and return optimal configuration for photo_organizer.py
+    
+    Returns a dict that can be used to set:
+    - ENABLE_FAST_HASH
+    - FAST_HASH_BYTES  
+    - Threading settings (for future use)
+    """
+    settings = get_optimal_settings(source_path)
+    storage_type = detect_storage_type(source_path)
+    
+    config = {
+        'ENABLE_FAST_HASH': True,  # Always beneficial
+        'FAST_HASH_BYTES': settings['hash_bytes'],
+        'ENABLE_MULTITHREADING': settings['enable_multithreading'],
+        'MAX_WORKERS': settings['max_workers'],
+        'BATCH_SIZE': settings['batch_size'],
+        'STORAGE_TYPE': storage_type,
+        'DESCRIPTION': settings['description']
+    }
+    
+    return config
+
+
+def print_storage_recommendations(source_path: str):
+    """Print storage-specific optimization recommendations."""
+    config = configure_for_storage_type(source_path)
+    
+    print(f"\n🔍 Storage Analysis for: {source_path}")
+    print(f"Detected: {config['DESCRIPTION']}")
+    print(f"Storage type: {config['STORAGE_TYPE']}")
+    
+    print(f"\n⚙️  Recommended Settings:")
+    print(f"ENABLE_FAST_HASH = {config['ENABLE_FAST_HASH']}")
+    print(f"FAST_HASH_BYTES = {config['FAST_HASH_BYTES']}")
+    print(f"Max workers: {config['MAX_WORKERS']}")
+    print(f"Multithreading: {config['ENABLE_MULTITHREADING']}")
+    
+    # Storage-specific tips
+    if 'hdd' in config['STORAGE_TYPE']:
+        print(f"\n💡 HDD Optimization Tips:")
+        print("• Sequential processing prevents head thrashing")
+        print("• Smaller hash samples reduce seek time") 
+        print("• Single-threaded avoids random access patterns")
+        print("• Consider organizing by directory for better locality")
+    elif 'nvme' in config['STORAGE_TYPE']:
+        print(f"\n💡 NVMe SSD Tips:")
+        print("• Large hash samples utilize high bandwidth")
+        print("• Multi-threading maximizes parallel I/O")
+        print("• Can handle aggressive concurrent operations")
+    elif 'sata_ssd' in config['STORAGE_TYPE']:
+        print(f"\n💡 SATA SSD Tips:")
+        print("• Good balance of speed and concurrent operations")
+        print("• Medium hash samples work well")
+        print("• Moderate multi-threading beneficial")
+
+
 if __name__ == "__main__":
+    # Storage detection demo
+    current_dir = "/home/dewicadat/dev/Projects/SnapSort"
+    
+    print("🚀 Storage Type Detection and Optimization")
+    print("=" * 50)
+    
+    print_storage_recommendations(current_dir)
+    
     # Performance testing
     import time
     
