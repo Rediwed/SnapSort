@@ -9,6 +9,7 @@ import sys
 import time
 import csv
 import gc
+import mmap
 from datetime import datetime
 from photo_utils import copy_photo_with_metadata
 from logging_utils import log_message, log_csv, ensure_csv_config
@@ -36,6 +37,10 @@ DEDUP_STRICT_THRESHOLD = 90.0
 DEDUP_LOG_THRESHOLD = 70.0
 DEDUP_PARTIAL_HASH_BYTES = 1024
 
+# Performance optimizations for SSDs
+ENABLE_FAST_HASH = True  # Use optimized hashing for better SSD performance
+FAST_HASH_BYTES = 8192  # Bytes to sample for fast hashing (8KB default)
+
 # Read version from VERSION file
 with open(os.path.join(os.path.dirname(__file__), "VERSION")) as f:
     __version__ = f.read().strip()
@@ -58,8 +63,11 @@ def prompt_if_needed():
         MIN_HEIGHT = int(input("Enter minimum image height (default 600): ").strip() or "600")
     if not MIN_FILESIZE or MIN_FILESIZE < 1:
         MIN_FILESIZE = int(input("Enter minimum file size in bytes (default 51200 for 50KB): ").strip() or "51200")
-    resp = input("Enable CSV logging for review/resume? (y/N): ").strip().lower()
-    ENABLE_CSV_LOG = resp == "y"
+    
+    # Only prompt for CSV logging if not already configured (for test mode)
+    if ENABLE_CSV_LOG is False:  # Default value, not explicitly set
+        resp = input("Enable CSV logging for review/resume? (y/N): ").strip().lower()
+        ENABLE_CSV_LOG = resp == "y"
 
 def load_config_from_csv(csv_path):
     """Load configuration parameters from a CSV file."""
@@ -178,10 +186,13 @@ def scan_and_organize_photos(processed_set=None):
                 continue
             dest_path = None
             try:
+                # Choose hash function based on performance settings
+                hash_func = file_hash_fast if ENABLE_FAST_HASH else file_hash
+                
                 result, dest_path = copy_photo_with_metadata(
                     src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
                     SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
-                    file_hash, log_csv, log_message,
+                    hash_func, log_csv, log_message,
                     dedup_index=dedup_index
                 )
                 if result == "copied":
@@ -270,10 +281,11 @@ def manual_copy_from_csv():
         src_path = row['src_path']
         dest_path = row['dest_path']
         # Use the same core logic for copying
+        hash_func = file_hash_fast if ENABLE_FAST_HASH else file_hash
         result, actual_dest_path = copy_photo_with_metadata(
             src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
             SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
-            file_hash, log_csv, log_message,
+            hash_func, log_csv, log_message,
             force_copy=(row.get('copy_anyway', '').strip().lower() in ['yes', '1']),
             dedup_index=dedup_index
         )
@@ -328,18 +340,24 @@ def resume_copy_from_csv():
 
 def test_mode():
     """Run the photo organizer in test mode using test data folders."""
-    global SOURCE_DIR, DEST_DIR
+    global SOURCE_DIR, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE, ENABLE_CSV_LOG
     
     test_source = os.path.join(os.path.dirname(__file__), "test_data", "source_photos")
     test_dest = os.path.join(os.path.dirname(__file__), "test_data", "dest_photos")
     
-    # Force use of test directories
+    # Force use of test directories and sensible defaults
     SOURCE_DIR = test_source
     DEST_DIR = test_dest
+    MIN_WIDTH = 600
+    MIN_HEIGHT = 600
+    MIN_FILESIZE = 51200
+    ENABLE_CSV_LOG = True  # Enable CSV logging in test mode
     
     print(f"Test mode activated:")
     print(f"Source: {SOURCE_DIR}")
     print(f"Destination: {DEST_DIR}")
+    print(f"Performance optimizations: {'Enabled' if ENABLE_FAST_HASH else 'Disabled'}")
+    print(f"Fast hash sampling: {FAST_HASH_BYTES} bytes")
     print()
     
     scan_and_organize_photos()
@@ -360,6 +378,43 @@ def file_hash(filepath, blocksize=65536):
             for block in iter(lambda: f.read(blocksize), b''):
                 hasher.update(block)
         return hasher.hexdigest()
+    except Exception:
+        return None
+
+def file_hash_fast(filepath, max_bytes=8192):
+    """Compute a fast partial hash for large files (optimized for SSDs)."""
+    import hashlib
+    import mmap
+    try:
+        file_size = os.path.getsize(filepath)
+        
+        # For small files, read everything
+        if file_size <= max_bytes:
+            with open(filepath, 'rb') as f:
+                return hashlib.sha256(f.read()).hexdigest()
+        
+        # For larger files, use memory mapping with sampling
+        with open(filepath, 'rb') as f:
+            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                hasher = hashlib.sha256()
+                
+                # Sample beginning, middle, and end for better uniqueness
+                chunk_size = max_bytes // 3
+                
+                # Beginning
+                hasher.update(mm[:chunk_size])
+                
+                # Middle (if file is large enough)
+                if file_size > chunk_size * 6:
+                    mid_start = (file_size // 2) - (chunk_size // 2)
+                    hasher.update(mm[mid_start:mid_start + chunk_size])
+                
+                # End (if file is large enough)
+                if file_size > chunk_size * 2:
+                    hasher.update(mm[-chunk_size:])
+                
+                return hasher.hexdigest()
+                
     except Exception:
         return None
 
