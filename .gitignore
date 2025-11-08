@@ -61,3 +61,7 @@ Thumbs.db
 # Virtualenvs
 .venv/
 venv/
+
+# Local planning and vision documents
+VISION.md
+ARCHITECTURE.md
