@@ -65,3 +65,16 @@ venv/
 # Local planning and vision documents
 VISION.md
 ARCHITECTURE.md
+
+# ── Full-stack (Node / Vite / Docker) ──────────────────
+node_modules/
+dist/
+.vite/
+
+# SQLite runtime files
+*.db
+*.db-wal
+*.db-shm
+
+# Docker / container
+docker-compose.override.yml

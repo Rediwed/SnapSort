@@ -1,0 +1,16 @@
+{
+  "name": "snapsort-backend",
+  "version": "1.0.0",
+  "description": "SnapSort backend — Express + SQLite API for photo organization",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "uuid": "^11.0.0"
+  }
+}

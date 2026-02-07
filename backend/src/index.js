@@ -1,0 +1,64 @@
+/**
+ * SnapSort Backend — Express + SQLite API server
+ *
+ * Provides REST endpoints for managing photo-organization jobs,
+ * browsing organized photos, reviewing duplicates, and adjusting settings.
+ * Communicates with the Python organizer engine via a child-process bridge.
+ */
+
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const { initDb } = require('./db/schema');
+const jobRoutes = require('./routes/jobs');
+const photoRoutes = require('./routes/photos');
+const duplicateRoutes = require('./routes/duplicates');
+const settingsRoutes = require('./routes/settings');
+const dashboardRoutes = require('./routes/dashboard');
+const filesystemRoutes = require('./routes/filesystem');
+const drivesRoutes = require('./routes/drives');
+const benchmarkRoutes = require('./routes/benchmarks');
+
+const PORT = process.env.PORT || 4000;
+const app = express();
+
+/* ------------------------------------------------------------------ */
+/*  Middleware                                                         */
+/* ------------------------------------------------------------------ */
+app.use(cors());
+app.use(express.json());
+
+/* ------------------------------------------------------------------ */
+/*  Database                                                           */
+/* ------------------------------------------------------------------ */
+const db = initDb(path.join(__dirname, '..', 'data', 'snapsort.db'));
+
+/* Attach db to every request so routes can access it */
+app.use((req, _res, next) => {
+  req.db = db;
+  next();
+});
+
+/* ------------------------------------------------------------------ */
+/*  Routes                                                             */
+/* ------------------------------------------------------------------ */
+app.use('/api/jobs', jobRoutes);
+app.use('/api/photos', photoRoutes);
+app.use('/api/duplicates', duplicateRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/filesystem', filesystemRoutes);
+app.use('/api/drives', drivesRoutes);
+app.use('/api/benchmarks', benchmarkRoutes);
+
+/* Health check */
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', version: '1.0.0' });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Start                                                              */
+/* ------------------------------------------------------------------ */
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`SnapSort API listening on http://0.0.0.0:${PORT}`);
+});
