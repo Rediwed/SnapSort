@@ -200,6 +200,10 @@ export default function Benchmarks() {
             </div>
           )}
 
+          <div style={{ padding: '8px 12px', background: 'var(--orange-muted, rgba(210,153,34,0.1))', borderRadius: 'var(--radius-md)', color: 'var(--orange)', fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
+            ⚠️ Temporary test files will be written to <strong>both</strong> source and destination folders during the benchmark, then automatically deleted afterwards. Do not use this on a source drive that is malfunctioning or at risk of data loss.
+          </div>
+
           <div className="bench-options">
             <div className="form-group" style={{ flex: 1 }}>
               <label>Test Files</label>
