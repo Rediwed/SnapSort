@@ -31,6 +31,7 @@ export const createJob     = (body) => request('/jobs', { method: 'POST', body: 
 export const startJob      = (id) => request(`/jobs/${id}/start`, { method: 'POST' });
 export const cancelJob     = (id) => request(`/jobs/${id}/cancel`, { method: 'POST' });
 export const deleteJob     = (id) => request(`/jobs/${id}`, { method: 'DELETE' });
+export const deleteJobWithPhotos = (id) => request(`/jobs/${id}/photos`, { method: 'DELETE' });
 export const fetchTestPresets = () => request('/jobs/test-presets');
 
 /* ---- Photos ---- */

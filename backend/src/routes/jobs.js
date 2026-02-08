@@ -95,4 +95,23 @@ router.delete('/:id', (req, res) => {
   res.status(204).end();
 });
 
+/* Delete a job AND remove copied files from disk */
+router.delete('/:id/photos', (req, res) => {
+  const fs = require('fs');
+  const { listPhotoPaths } = require('../db/dao');
+  const job = getJob(req.db, req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  const paths = listPhotoPaths(req.db, req.params.id);
+  let deleted = 0;
+  let failed = 0;
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) { fs.unlinkSync(p); deleted++; }
+    } catch { failed++; }
+  }
+  deleteJob(req.db, req.params.id);
+  res.json({ deleted, failed, total: paths.length });
+});
+
 module.exports = router;

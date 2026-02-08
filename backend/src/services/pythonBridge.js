@@ -16,7 +16,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const { updateJobStatus, insertPhoto, insertDuplicate } = require('../db/dao');
+const { updateJobStatus, insertPhoto, insertDuplicate, getAllSettings } = require('../db/dao');
 const { v4: uuidv4 } = require('uuid');
 
 /* Map of jobId → child process so we can cancel */
@@ -28,6 +28,9 @@ const activeProcesses = new Map();
 function startJob(db, job) {
   const pythonScript = path.join(__dirname, '..', '..', '..', 'photo_organizer.py');
 
+  /* Pull global settings to forward threading / format prefs to Python */
+  const settings = getAllSettings(db);
+
   const config = JSON.stringify({
     source_dir: job.source_dir,
     dest_dir: job.dest_dir,
@@ -36,7 +39,13 @@ function startJob(db, job) {
     min_height: job.min_height,
     min_filesize: job.min_filesize,
     job_id: job.id,
-    json_output: true,          // tell the script to emit JSON lines
+    json_output: true,
+    /* Performance / threading */
+    enable_multithreading: settings.enable_multithreading || 'false',
+    max_worker_threads: settings.max_worker_threads || '8',
+    parallel_hash_workers: settings.parallel_hash_workers || '4',
+    /* Supported file formats (comma-separated extensions) */
+    supported_extensions: settings.supported_extensions || '',
   });
 
   const child = spawn('python3', [pythonScript, '--json-config', '-'], {

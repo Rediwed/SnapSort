@@ -57,6 +57,12 @@ function deleteJob(db, id) {
   db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
 }
 
+function listPhotoPaths(db, jobId) {
+  return db.prepare(
+    "SELECT dest_path FROM photos WHERE job_id = ? AND dest_path IS NOT NULL AND status = 'copied'"
+  ).all(jobId).map((r) => r.dest_path);
+}
+
 /* ================================================================== */
 /*  PHOTOS                                                             */
 /* ================================================================== */
@@ -191,7 +197,7 @@ function getDashboardStats(db) {
 
 module.exports = {
   createJob, getJob, listJobs, updateJobStatus, deleteJob,
-  insertPhoto, listPhotos, countPhotos, getPhoto,
+  insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths,
   insertDuplicate, listDuplicates, resolveDuplicate, countDuplicates,
   getAllSettings, getSetting, upsertSetting, bulkUpsertSettings,
   getDashboardStats,

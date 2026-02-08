@@ -443,13 +443,35 @@ def json_mode():
         emit({"event": "error", "message": f"Failed to parse config from stdin: {e}"})
         sys.exit(1)
 
-    global SOURCE_DIR, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE, ENABLE_CSV_LOG
+    global SOURCE_DIR, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE, ENABLE_CSV_LOG, SUPPORTED_EXTENSIONS
     SOURCE_DIR = cfg.get("source_dir", "")
     DEST_DIR = cfg.get("dest_dir", "")
     MIN_WIDTH = int(cfg.get("min_width", 600))
     MIN_HEIGHT = int(cfg.get("min_height", 600))
     MIN_FILESIZE = int(cfg.get("min_filesize", 51200))
     ENABLE_CSV_LOG = None  # skip prompt
+
+    # Override supported file extensions if provided
+    ext_override = cfg.get("supported_extensions", "")
+    if ext_override:
+        SUPPORTED_EXTENSIONS = tuple(
+            e.strip().lower() if e.strip().startswith(".") else "." + e.strip().lower()
+            for e in ext_override.split(",") if e.strip()
+        )
+
+    # Multi-threading configuration
+    use_threading = cfg.get("enable_multithreading", "false") == "true"
+    max_workers = int(cfg.get("max_worker_threads", 8))
+    hash_workers = int(cfg.get("parallel_hash_workers", 4))
+
+    if use_threading:
+        try:
+            import concurrent.futures
+            import threading
+            emit({"event": "progress", "message": f"Multi-threading enabled: {max_workers} workers, {hash_workers} hash workers"})
+        except ImportError:
+            use_threading = False
+            emit({"event": "progress", "message": "Multi-threading requested but concurrent.futures not available, falling back to sequential"})
 
     if not SOURCE_DIR or not os.path.isdir(SOURCE_DIR):
         emit({"event": "error", "message": f"Source directory does not exist: {SOURCE_DIR}"})
