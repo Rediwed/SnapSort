@@ -18,6 +18,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const filesystemRoutes = require('./routes/filesystem');
 const drivesRoutes = require('./routes/drives');
 const benchmarkRoutes = require('./routes/benchmarks');
+const profileRoutes = require('./routes/profiles');
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -50,6 +51,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/filesystem', filesystemRoutes);
 app.use('/api/drives', drivesRoutes);
 app.use('/api/benchmarks', benchmarkRoutes);
+app.use('/api/profiles', profileRoutes);
 
 /* Health check */
 app.get('/api/health', (_req, res) => {

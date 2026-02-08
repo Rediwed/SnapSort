@@ -3,14 +3,15 @@ import Badge from '../components/Badge';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import FilePicker from '../components/FilePicker';
-import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets } from '../api';
+import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles } from '../api';
 
 const statusVariant = { pending: 'orange', running: 'accent', done: 'green', error: 'red' };
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
+  const [profiles, setProfiles] = useState([]);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200 });
+  const [form, setForm] = useState({ sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200, performanceProfile: '' });
   const [picker, setPicker] = useState({ open: false, field: null });
   const [loadingTest, setLoadingTest] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);    // job to delete
@@ -18,6 +19,7 @@ export default function Jobs() {
 
   const load = useCallback(() => fetchJobs().then(setJobs).catch(console.error), []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetchProfiles().then(setProfiles).catch(console.error); }, []);
 
   /* Live-poll every 500ms while any job is running */
   useEffect(() => {
@@ -31,7 +33,7 @@ export default function Jobs() {
   const handleCreate = async () => {
     await createJob(form);
     setShowNew(false);
-    setForm({ sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200 });
+    setForm({ sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200, performanceProfile: '' });
     load();
   };
 
@@ -88,6 +90,10 @@ export default function Jobs() {
     { key: 'source_dir', header: 'Source', className: 'truncate', render: (r) => r.source_dir.split('/').pop() },
     { key: 'dest_dir', header: 'Destination', className: 'truncate', render: (r) => r.dest_dir.split('/').pop() },
     { key: 'mode', header: 'Mode', render: (r) => <Badge variant="cyan">{r.mode}</Badge> },
+    { key: 'profile', header: 'Profile', render: (r) => {
+      const p = profiles.find((pr) => pr.id === r.performance_profile);
+      return p ? <Badge variant="pink">{p.name}</Badge> : <span className="mono" style={{ opacity: 0.4 }}>default</span>;
+    }},
     { key: 'status', header: 'Status', render: (r) => <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge> },
     {
       key: 'progress', header: 'Progress', className: 'mono', render: (r) =>
@@ -159,6 +165,20 @@ export default function Jobs() {
             <option value="manual">Manual — CSV marked files only</option>
             <option value="resume">Resume — skip already processed</option>
           </select>
+        </div>
+        <div className="form-group">
+          <label>Performance Profile</label>
+          <select className="form-select" value={form.performanceProfile} onChange={(e) => setForm({ ...form, performanceProfile: e.target.value })}>
+            <option value="">Use global defaults</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}{p.is_builtin ? '' : ' (custom)'}
+              </option>
+            ))}
+          </select>
+          {form.performanceProfile && profiles.find((p) => p.id === form.performanceProfile)?.description && (
+            <p className="form-hint">{profiles.find((p) => p.id === form.performanceProfile).description}</p>
+          )}
         </div>
         <div className="flex gap-12">
           <div className="form-group" style={{ flex: 1 }}>

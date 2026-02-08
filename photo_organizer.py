@@ -598,16 +598,29 @@ def json_mode():
 
     # Multi-threading configuration
     use_threading = cfg.get("enable_multithreading", "false") == "true"
-    max_workers = int(cfg.get("max_worker_threads", 8))
-    batch_size = 50
+    sequential = cfg.get("sequential_processing", "false") == "true"
+    max_workers = int(cfg.get("max_worker_threads", 4))
+    batch_size = int(cfg.get("batch_size", 25))
+    concurrent_copies = int(cfg.get("concurrent_copies", 2))
+    hash_bytes_cfg = int(cfg.get("hash_bytes", 4096))
+
+    # Override fast-hash sample size if provided
+    global FAST_HASH_BYTES
+    FAST_HASH_BYTES = hash_bytes_cfg
+
+    # Sequential processing forces single-threaded
+    if sequential:
+        use_threading = False
 
     if use_threading:
         try:
             import concurrent.futures as _cf
-            emit({"event": "progress", "message": f"Multi-threading enabled: {max_workers} workers"})
+            emit({"event": "progress", "message": f"Multi-threading enabled: {max_workers} workers, batch_size={batch_size}"})
         except ImportError:
             use_threading = False
             emit({"event": "progress", "message": "concurrent.futures unavailable, falling back to sequential"})
+    elif sequential:
+        emit({"event": "progress", "message": "Sequential processing mode (optimised for HDDs)"})
 
     # ── Validate paths ──────────────────────────────────────────────
     if not SOURCE_DIR or not os.path.isdir(SOURCE_DIR):
@@ -638,7 +651,12 @@ def json_mode():
     emit({"event": "progress", "processed": 0, "copied": 0, "skipped": 0,
           "errors": 0, "total_files": total_files})
 
-    hash_func = file_hash_fast if ENABLE_FAST_HASH else file_hash
+    # Use a partial to bind the configured hash_bytes
+    if ENABLE_FAST_HASH:
+        import functools as _functools
+        hash_func = _functools.partial(file_hash_fast, max_bytes=hash_bytes_cfg)
+    else:
+        hash_func = file_hash
 
     # Shared mutable counters — only mutated from ``_handle_result`` which
     # is called from within the _emit_lock in threaded mode, or sequentially.

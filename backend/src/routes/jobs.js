@@ -57,11 +57,11 @@ router.get('/:id', (req, res) => {
 
 /* Create a new job */
 router.post('/', (req, res) => {
-  const { sourceDir, destDir, mode, minWidth, minHeight, minFilesize } = req.body;
+  const { sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile } = req.body;
   if (!sourceDir || !destDir) {
     return res.status(400).json({ error: 'sourceDir and destDir are required' });
   }
-  const job = createJob(req.db, { sourceDir, destDir, mode, minWidth, minHeight, minFilesize });
+  const job = createJob(req.db, { sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile });
   res.status(201).json(job);
 });
 

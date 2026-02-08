@@ -11,12 +11,12 @@ const { v4: uuidv4 } = require('uuid');
 /*  JOBS                                                               */
 /* ================================================================== */
 
-function createJob(db, { sourceDir, destDir, mode = 'normal', minWidth = 600, minHeight = 600, minFilesize = 51200 }) {
+function createJob(db, { sourceDir, destDir, mode = 'normal', minWidth = 600, minHeight = 600, minFilesize = 51200, performanceProfile = null }) {
   const id = uuidv4();
   db.prepare(`
-    INSERT INTO jobs (id, source_dir, dest_dir, mode, min_width, min_height, min_filesize)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, sourceDir, destDir, mode, minWidth, minHeight, minFilesize);
+    INSERT INTO jobs (id, source_dir, dest_dir, mode, min_width, min_height, min_filesize, performance_profile)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile);
   return getJob(db, id);
 }
 
@@ -167,6 +167,48 @@ function bulkUpsertSettings(db, pairs) {
 }
 
 /* ================================================================== */
+/*  PERFORMANCE PROFILES                                               */
+/* ================================================================== */
+
+function listProfiles(db) {
+  return db.prepare('SELECT * FROM performance_profiles ORDER BY is_builtin DESC, name ASC').all();
+}
+
+function getProfile(db, id) {
+  return db.prepare('SELECT * FROM performance_profiles WHERE id = ?').get(id) || null;
+}
+
+function createProfile(db, { id, name, description, max_workers, batch_size, hash_bytes, concurrent_copies, enable_multithreading, sequential_processing }) {
+  const profileId = id || uuidv4();
+  db.prepare(`
+    INSERT INTO performance_profiles (id, name, description, max_workers, batch_size, hash_bytes, concurrent_copies, enable_multithreading, sequential_processing, is_builtin)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+  `).run(profileId, name, description || '', max_workers || 4, batch_size || 25, hash_bytes || 4096, concurrent_copies || 2, enable_multithreading ? 1 : 0, sequential_processing ? 1 : 0);
+  return getProfile(db, profileId);
+}
+
+function updateProfile(db, id, updates) {
+  const sets = [];
+  const params = [];
+  const allowed = ['name', 'description', 'max_workers', 'batch_size', 'hash_bytes', 'concurrent_copies', 'enable_multithreading', 'sequential_processing'];
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowed.includes(key)) {
+      sets.push(`${key} = ?`);
+      params.push(key === 'enable_multithreading' || key === 'sequential_processing' ? (value ? 1 : 0) : value);
+    }
+  }
+  if (sets.length === 0) return getProfile(db, id);
+  params.push(id);
+  db.prepare(`UPDATE performance_profiles SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getProfile(db, id);
+}
+
+function deleteProfile(db, id) {
+  // Don't delete built-in profiles
+  db.prepare('DELETE FROM performance_profiles WHERE id = ? AND is_builtin = 0').run(id);
+}
+
+/* ================================================================== */
 /*  DASHBOARD                                                          */
 /* ================================================================== */
 
@@ -200,5 +242,6 @@ module.exports = {
   insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths,
   insertDuplicate, listDuplicates, resolveDuplicate, countDuplicates,
   getAllSettings, getSetting, upsertSetting, bulkUpsertSettings,
+  listProfiles, getProfile, createProfile, updateProfile, deleteProfile,
   getDashboardStats,
 };

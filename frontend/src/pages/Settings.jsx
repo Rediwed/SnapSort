@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchSettings, updateSettings } from '../api';
+import { fetchSettings, updateSettings, fetchProfiles } from '../api';
 
 const DEFAULT_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.cr2', '.nef', '.arw',
@@ -19,11 +19,13 @@ const settingsMeta = [
 
 export default function Settings() {
   const [values, setValues] = useState({});
+  const [profiles, setProfiles] = useState([]);
   const [saved, setSaved] = useState(false);
   const [newExt, setNewExt] = useState('');
 
   useEffect(() => {
     fetchSettings().then(setValues).catch(console.error);
+    fetchProfiles().then(setProfiles).catch(console.error);
   }, []);
 
   /* Derived: current extension list */
@@ -61,11 +63,33 @@ export default function Settings() {
     handleChange('supported_extensions', DEFAULT_EXTENSIONS.join(','));
   };
 
-  /* Threading helpers */
-  const threadingEnabled = values.enable_multithreading === 'true';
-  const maxWorkers = Number(values.max_worker_threads) || 8;
+  /* Performance values */
+  const selectedProfileId = values.default_performance_profile || 'default';
+  const enableMT = values.enable_multithreading === 'true';
+  const seqProcessing = values.sequential_processing === 'true';
+  const maxWorkers = Number(values.max_worker_threads) || 4;
   const hashWorkers = Number(values.parallel_hash_workers) || 4;
+  const batchSize = Number(values.batch_size) || 25;
+  const hashBytes = Number(values.hash_bytes) || 4096;
+  const concurrentCopies = Number(values.concurrent_copies) || 2;
   const cpuCount = navigator.hardwareConcurrency || 4;
+
+  /* Apply a profile's values to the settings */
+  const applyProfile = (profileId) => {
+    const p = profiles.find((pr) => pr.id === profileId);
+    if (!p) return;
+    setValues((prev) => ({
+      ...prev,
+      default_performance_profile: profileId,
+      enable_multithreading: p.enable_multithreading ? 'true' : 'false',
+      sequential_processing: p.sequential_processing ? 'true' : 'false',
+      max_worker_threads: String(p.max_workers),
+      batch_size: String(p.batch_size),
+      hash_bytes: String(p.hash_bytes),
+      concurrent_copies: String(p.concurrent_copies),
+    }));
+    setSaved(false);
+  };
 
   return (
     <>
@@ -109,61 +133,153 @@ export default function Settings() {
           ))}
         </div>
 
-        {/* ── Performance / Multi-threading ────────────────── */}
+        {/* ── Performance ──────────────────────────────────── */}
         <div className="card" style={{ maxWidth: 600, marginTop: 20 }}>
           <div className="card-header"><h3>Performance</h3></div>
 
+          {/* Profile selector */}
+          <div className="form-group">
+            <label>Performance Profile</label>
+            <select
+              className="form-select"
+              value={selectedProfileId}
+              onChange={(e) => applyProfile(e.target.value)}
+            >
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.is_builtin ? '' : ' (custom)'}
+                </option>
+              ))}
+            </select>
+            {profiles.find((p) => p.id === selectedProfileId)?.description && (
+              <p className="form-hint">
+                {profiles.find((p) => p.id === selectedProfileId).description}
+              </p>
+            )}
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+
+          {/* Enable Multi-threading */}
           <div className="form-group">
             <label className="form-toggle">
               <input
                 type="checkbox"
-                checked={threadingEnabled}
+                checked={enableMT}
                 onChange={(e) => handleChange('enable_multithreading', e.target.checked ? 'true' : 'false')}
               />
               <span>Enable Multi-threading</span>
             </label>
             <p className="form-hint">
-              Use parallel workers to process photos concurrently. Best on SSDs.
+              Use parallel workers to process photos concurrently.
             </p>
           </div>
 
-          {threadingEnabled && (
-            <>
-              <div className="form-group">
-                <label>Worker Threads <span className="mono badge">{maxWorkers}</span></label>
-                <input
-                  type="range"
-                  className="form-range"
-                  min={1}
-                  max={Math.max(32, cpuCount * 2)}
-                  value={maxWorkers}
-                  onChange={(e) => handleChange('max_worker_threads', e.target.value)}
-                />
-                <div className="range-labels">
-                  <span>1</span>
-                  <span>{cpuCount} cores detected</span>
-                  <span>{Math.max(32, cpuCount * 2)}</span>
-                </div>
-              </div>
+          {/* Sequential Processing */}
+          <div className="form-group">
+            <label className="form-toggle">
+              <input
+                type="checkbox"
+                checked={seqProcessing}
+                onChange={(e) => handleChange('sequential_processing', e.target.checked ? 'true' : 'false')}
+              />
+              <span>Sequential Processing</span>
+            </label>
+            <p className="form-hint">
+              Process files one-by-one in order. Best for HDDs to avoid random seeks.
+            </p>
+          </div>
 
-              <div className="form-group">
-                <label>Hash Workers <span className="mono badge">{hashWorkers}</span></label>
-                <input
-                  type="range"
-                  className="form-range"
-                  min={1}
-                  max={16}
-                  value={hashWorkers}
-                  onChange={(e) => handleChange('parallel_hash_workers', e.target.value)}
-                />
-                <div className="range-labels">
-                  <span>1</span>
-                  <span>Parallel dedup hashing threads</span>
-                  <span>16</span>
-                </div>
-              </div>
-            </>
-          )}
+          {/* Max Workers */}
+          <div className="form-group">
+            <label>Worker Threads <span className="mono badge">{maxWorkers}</span></label>
+            <input
+              type="range"
+              className="form-range"
+              min={1}
+              max={Math.max(32, cpuCount * 2)}
+              value={maxWorkers}
+              onChange={(e) => handleChange('max_worker_threads', e.target.value)}
+            />
+            <div className="range-labels">
+              <span>1</span>
+              <span>{cpuCount} cores detected</span>
+              <span>{Math.max(32, cpuCount * 2)}</span>
+            </div>
+          </div>
+
+          {/* Hash Workers */}
+          <div className="form-group">
+            <label>Hash Workers <span className="mono badge">{hashWorkers}</span></label>
+            <input
+              type="range"
+              className="form-range"
+              min={1}
+              max={16}
+              value={hashWorkers}
+              onChange={(e) => handleChange('parallel_hash_workers', e.target.value)}
+            />
+            <div className="range-labels">
+              <span>1</span>
+              <span>Parallel dedup hashing threads</span>
+              <span>16</span>
+            </div>
+          </div>
+
+          {/* Batch Size */}
+          <div className="form-group">
+            <label>Batch Size <span className="mono badge">{batchSize}</span></label>
+            <input
+              type="range"
+              className="form-range"
+              min={1}
+              max={200}
+              value={batchSize}
+              onChange={(e) => handleChange('batch_size', e.target.value)}
+            />
+            <div className="range-labels">
+              <span>1</span>
+              <span>Files per thread batch</span>
+              <span>200</span>
+            </div>
+          </div>
+
+          {/* Hash Bytes */}
+          <div className="form-group">
+            <label>Hash Sample Bytes <span className="mono badge">{hashBytes.toLocaleString()}</span></label>
+            <input
+              type="range"
+              className="form-range"
+              min={512}
+              max={32768}
+              step={512}
+              value={hashBytes}
+              onChange={(e) => handleChange('hash_bytes', e.target.value)}
+            />
+            <div className="range-labels">
+              <span>512</span>
+              <span>Bytes read per hash check</span>
+              <span>32,768</span>
+            </div>
+          </div>
+
+          {/* Concurrent Copies */}
+          <div className="form-group">
+            <label>Concurrent Copies <span className="mono badge">{concurrentCopies}</span></label>
+            <input
+              type="range"
+              className="form-range"
+              min={1}
+              max={16}
+              value={concurrentCopies}
+              onChange={(e) => handleChange('concurrent_copies', e.target.value)}
+            />
+            <div className="range-labels">
+              <span>1</span>
+              <span>Parallel file copy operations</span>
+              <span>16</span>
+            </div>
+          </div>
         </div>
 
         {/* ── File Formats ─────────────────────────────────── */}

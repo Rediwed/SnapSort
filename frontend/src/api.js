@@ -65,6 +65,13 @@ export const fetchFilesystemRoots = () => request('/filesystem/roots');
 /* ---- Drives ---- */
 export const fetchDrives = () => request('/drives');
 
+/* ---- Performance Profiles ---- */
+export const fetchProfiles = () => request('/profiles');
+export const fetchProfile = (id) => request(`/profiles/${id}`);
+export const createProfile = (body) => request('/profiles', { method: 'POST', body: JSON.stringify(body) });
+export const updateProfile = (id, body) => request(`/profiles/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const deleteProfile = (id) => request(`/profiles/${id}`, { method: 'DELETE' });
+
 /* ---- Benchmarks ---- */
 export const fetchBenchmarks = () => request('/benchmarks');
 export const fetchBenchmark = (id) => request(`/benchmarks/${id}`);

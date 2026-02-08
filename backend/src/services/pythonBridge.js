@@ -16,7 +16,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const { updateJobStatus, insertPhoto, insertDuplicate, getAllSettings } = require('../db/dao');
+const { updateJobStatus, insertPhoto, insertDuplicate, getAllSettings, getProfile } = require('../db/dao');
 const { v4: uuidv4 } = require('uuid');
 
 /* Map of jobId → child process so we can cancel */
@@ -31,6 +31,21 @@ function startJob(db, job) {
   /* Pull global settings to forward threading / format prefs to Python */
   const settings = getAllSettings(db);
 
+  /* Resolve performance profile: job-level > global default > built-in 'default' */
+  const profileId = job.performance_profile || settings.default_performance_profile || 'default';
+  const profile = getProfile(db, profileId);
+
+  /* Merge: profile values win over global settings */
+  const perfConfig = {
+    enable_multithreading: profile ? (profile.enable_multithreading ? 'true' : 'false') : (settings.enable_multithreading || 'false'),
+    max_worker_threads: profile ? String(profile.max_workers) : (settings.max_worker_threads || '4'),
+    parallel_hash_workers: settings.parallel_hash_workers || '4',
+    batch_size: profile ? String(profile.batch_size) : (settings.batch_size || '25'),
+    hash_bytes: profile ? String(profile.hash_bytes) : (settings.hash_bytes || '4096'),
+    concurrent_copies: profile ? String(profile.concurrent_copies) : (settings.concurrent_copies || '2'),
+    sequential_processing: profile ? (profile.sequential_processing ? 'true' : 'false') : (settings.sequential_processing || 'false'),
+  };
+
   const config = JSON.stringify({
     source_dir: job.source_dir,
     dest_dir: job.dest_dir,
@@ -40,10 +55,8 @@ function startJob(db, job) {
     min_filesize: job.min_filesize,
     job_id: job.id,
     json_output: true,
-    /* Performance / threading */
-    enable_multithreading: settings.enable_multithreading || 'false',
-    max_worker_threads: settings.max_worker_threads || '8',
-    parallel_hash_workers: settings.parallel_hash_workers || '4',
+    /* Performance / threading (merged from profile + global settings) */
+    ...perfConfig,
     /* Supported file formats (comma-separated extensions) */
     supported_extensions: settings.supported_extensions || '',
   });
