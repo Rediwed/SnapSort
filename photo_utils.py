@@ -232,10 +232,10 @@ def copy_photo_with_metadata(
                         )
                     return "skipped", None
         except Exception:
-            log_message_func(f"Skipped (cannot open image): {src_path}")
+            log_message_func(f"Error (cannot open image): {src_path}")
             if enable_csv_log:
-                log_csv_func("skipped", "cannot open image", src_path)
-            return "skipped", None
+                log_csv_func("error", "cannot open image", src_path)
+            return "error", None
 
     date_taken = extract_date_taken(src_path)
     if not date_taken:

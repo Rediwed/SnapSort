@@ -9,7 +9,7 @@ const {
   createJob, getJob, listJobs, updateJobStatus, deleteJob,
   getPhotosByIds, updatePhotoOverride,
 } = require('../db/dao');
-const { startJob, cancelJob } = require('../services/pythonBridge');
+const { startJob, cancelJob, getActiveJobIds, getCurrentFile } = require('../services/pythonBridge');
 const { assertNotInSource } = require('../sourceGuard');
 
 const router = Router();
@@ -50,6 +50,30 @@ router.get('/test-presets', (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+/* Active jobs — returns running jobs with progress + current file */
+router.get('/active', (req, res) => {
+  const activeIds = getActiveJobIds();
+  if (activeIds.length === 0) return res.json([]);
+  const jobs = activeIds.map((id) => {
+    const job = getJob(req.db, id);
+    if (!job) return null;
+    const fileInfo = getCurrentFile(id);
+    return {
+      id: job.id,
+      source_dir: job.source_dir,
+      status: job.status,
+      processed: job.processed,
+      total_files: job.total_files,
+      copied: job.copied,
+      skipped: job.skipped,
+      errors: job.errors,
+      currentFile: fileInfo?.currentFile || null,
+      currentFileStatus: fileInfo?.status || null,
+    };
+  }).filter(Boolean);
+  res.json(jobs);
 });
 
 /* Get single job */

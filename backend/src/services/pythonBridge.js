@@ -23,6 +23,8 @@ const { v4: uuidv4 } = require('uuid');
 const activeProcesses = new Map();
 /* Map of jobId → Map(src_path → photoId) so duplicate events can reference the correct photo */
 const photoIdMaps = new Map();
+/* Map of jobId → { currentFile, timestamp } for live file tracking */
+const currentFiles = new Map();
 
 /**
  * Start a job by spawning the Python organizer.
@@ -73,6 +75,7 @@ function startJob(db, job) {
 
   activeProcesses.set(job.id, child);
   photoIdMaps.set(job.id, new Map());
+  currentFiles.set(job.id, { currentFile: null, timestamp: Date.now() });
 
   /* Feed config via stdin */
   child.stdin.write(config);
@@ -102,6 +105,7 @@ function startJob(db, job) {
   child.on('close', (code) => {
     activeProcesses.delete(job.id);
     photoIdMaps.delete(job.id);
+    currentFiles.delete(job.id);
     const status = code === 0 ? 'done' : 'error';
     updateJobStatus(db, job.id, status, {
       finished_at: new Date().toISOString(),
@@ -139,6 +143,12 @@ function handleEvent(db, jobId, evt) {
 
     case 'photo': {
       const photoId = uuidv4();
+      /* Track current file for live indicator */
+      currentFiles.set(jobId, {
+        currentFile: evt.filename || path.basename(evt.src_path),
+        status: evt.status,
+        timestamp: Date.now(),
+      });
       insertPhoto(db, {
         id: photoId,
         jobId,
@@ -211,4 +221,18 @@ function handleEvent(db, jobId, evt) {
   }
 }
 
-module.exports = { startJob, cancelJob };
+/**
+ * Return map of active job IDs for use by the route layer.
+ */
+function getActiveJobIds() {
+  return [...activeProcesses.keys()];
+}
+
+/**
+ * Return current file info for a job.
+ */
+function getCurrentFile(jobId) {
+  return currentFiles.get(jobId) || null;
+}
+
+module.exports = { startJob, cancelJob, getActiveJobIds, getCurrentFile };

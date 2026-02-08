@@ -36,11 +36,11 @@ router.get('/jobs', (req, res) => {
   res.json(jobsWithDups);
 });
 
-/* Resolve a duplicate (keep / delete / undecided) */
+/* Resolve a duplicate (ignore / keep_overwrite / keep_rename / undecided) */
 router.patch('/:id', (req, res) => {
   const { resolution } = req.body;
-  if (!['keep', 'delete', 'undecided'].includes(resolution)) {
-    return res.status(400).json({ error: 'resolution must be keep | delete | undecided' });
+  if (!['ignore', 'keep_overwrite', 'keep_rename', 'undecided'].includes(resolution)) {
+    return res.status(400).json({ error: 'resolution must be ignore | keep_overwrite | keep_rename | undecided' });
   }
   resolveDuplicate(req.db, req.params.id, resolution);
   res.json({ id: req.params.id, resolution });

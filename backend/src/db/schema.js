@@ -94,6 +94,8 @@ function initDb(dbPath) {
     if (!photoCols.includes('dpi')) {
       db.exec('ALTER TABLE photos ADD COLUMN dpi INTEGER');
     }
+    /* Data fix: reclassify "cannot open image" from skipped → error */
+    db.exec(`UPDATE photos SET status = 'error' WHERE status = 'skipped' AND skip_reason = 'cannot open image'`);
   } catch { /* table doesn't exist yet — CREATE above handled it */ }
 
   /* ---- duplicates ---- */

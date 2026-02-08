@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import ActiveJobIndicator from './ActiveJobIndicator';
 
 const links = [
   { to: '/dashboard',  icon: '◉', label: 'Dashboard' },
@@ -31,6 +32,8 @@ export default function Sidebar({ open, onClose }) {
             </NavLink>
           ))}
         </nav>
+
+        <ActiveJobIndicator />
       </aside>
 
       {/* Mobile top-down drawer — hidden on desktop */}
@@ -41,6 +44,7 @@ export default function Sidebar({ open, onClose }) {
             <div className="logo-icon">S</div>
             <h1>SnapSort</h1>
           </div>
+          <ActiveJobIndicator compact />
         </div>
         <nav className="mobile-drawer-nav">
           {links.map((l) => (

@@ -4,10 +4,10 @@ import PillTabs from '../components/PillTabs';
 import { fetchPhotos, fetchPhotoJobs, photoPreviewUrl, overridePhotos, resolveDuplicate } from '../api';
 
 const statusVariant = { copied: 'green', skipped: 'orange', error: 'red', pending: 'accent', duplicate: 'red' };
-const resolutionVariant = { keep: 'green', delete: 'red', undecided: 'orange' };
+const resolutionVariant = { keep_overwrite: 'green', keep_rename: 'cyan', ignore: 'red', undecided: 'orange' };
+const resolutionLabel = { keep_overwrite: 'overwrite', keep_rename: 'keep both', ignore: 'skip', undecided: 'undecided' };
 
 const tabs = [
-  { value: '',          label: 'All' },
   { value: 'copied',    label: 'Copied' },
   { value: 'skipped',   label: 'Skipped' },
   { value: 'duplicate', label: 'Duplicates' },
@@ -15,13 +15,14 @@ const tabs = [
 ];
 
 const resolutionTabs = [
-  { value: '',          label: 'All' },
-  { value: 'undecided', label: 'Undecided' },
-  { value: 'keep',      label: 'Kept' },
-  { value: 'delete',    label: 'Deleted' },
+  { value: '',              label: 'All' },
+  { value: 'undecided',     label: 'Undecided' },
+  { value: 'keep_overwrite', label: 'Overwrite' },
+  { value: 'keep_rename',   label: 'Keep Both' },
+  { value: 'ignore',        label: 'Skip' },
 ];
 
-const tabLabels = { '': 'all', copied: 'copied', skipped: 'skipped', duplicate: 'duplicate', error: 'error' };
+const tabLabels = { copied: 'copied', skipped: 'skipped', duplicate: 'duplicate', error: 'error' };
 
 /* System locale date formatting */
 const fmtDate = (d) => {
@@ -51,7 +52,13 @@ const fmtPath = (p) => {
   return parts.length > 3 ? '…/' + parts.slice(-3).join('/') : p;
 };
 
-/* ── Column definitions ──────────────────────────────────────────── */
+const fmtSize = (s) => {
+  if (!s) return '—';
+  if (s >= 1048576) return `${(s / 1048576).toFixed(1)} MB`;
+  return `${(s / 1024).toFixed(0)} KB`;
+};
+
+/* ── Column definitions (non-dup tabs only) ──────────────────────── */
 
 const baseColumns = [
   { key: 'filename',     label: 'Filename' },
@@ -64,18 +71,13 @@ const baseColumns = [
   { key: 'processed_at', label: 'Processed' },
 ];
 
-const dupColumns = [
-  { key: 'filename',         label: 'Filename' },
-  { key: 'extension',        label: 'Ext' },
-  { key: 'similarity',       label: 'Similarity',  sortKey: (r) => r.similarity || 0 },
-  { key: 'dup_matched_path', label: 'Matched With' },
-  { key: 'dup_resolution',   label: 'Resolution',  sortKey: (r) => r.dup_resolution || 'undecided' },
-  { key: 'width',            label: 'Width' },
-  { key: 'height',           label: 'Height' },
-  { key: 'dpi',              label: 'DPI' },
-  { key: 'file_size',        label: 'Size' },
-  { key: 'date_taken',       label: 'Date Taken' },
-  { key: 'processed_at',     label: 'Processed' },
+/* Duplicate comparison fields shown side by side */
+const compareFields = [
+  { key: 'file_size',  matchKey: 'match_file_size',  label: 'Size',       fmt: fmtSize },
+  { key: 'width',      matchKey: 'match_width',      label: 'Width',      fmt: (v) => v ?? '—', unit: 'px' },
+  { key: 'height',     matchKey: 'match_height',     label: 'Height',     fmt: (v) => v ?? '—', unit: 'px' },
+  { key: 'dpi',        matchKey: 'match_dpi',        label: 'DPI',        fmt: (v) => v ?? '—' },
+  { key: 'date_taken', matchKey: 'match_date_taken', label: 'Date Taken', fmt: fmtDate },
 ];
 
 function comparator(a, b, key, col) {
@@ -94,8 +96,15 @@ function comparator(a, b, key, col) {
   return String(va).localeCompare(String(vb), undefined, { sensitivity: 'base' });
 }
 
+/* Sort key for dup cards */
+const dupSortKeys = {
+  similarity:     (r) => r.similarity || 0,
+  dup_resolution: (r) => r.dup_resolution || 'undecided',
+  filename:       (r) => r.filename,
+};
+
 export default function Photos() {
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('copied');
   const [resolution, setResolution] = useState('');
   const [photos, setPhotos] = useState([]);
   const [total, setTotal] = useState(0);
@@ -108,12 +117,18 @@ export default function Photos() {
   const [sortCol, setSortCol] = useState(null);
   const [sortAsc, setSortAsc] = useState(true);
 
+  /* Dup card sort */
+  const [dupSort, setDupSort] = useState('similarity');
+
   /* Hover preview state */
   const [preview, setPreview] = useState(null);
   const previewRef = useRef(null);
 
+  /* Shift-click tracking */
+  const lastClickedRef = useRef(null);
+
   const isDupTab = status === 'duplicate';
-  const columns = isDupTab ? dupColumns : baseColumns;
+  const columns = baseColumns;
 
   /* Load job list for dropdown */
   useEffect(() => {
@@ -125,6 +140,7 @@ export default function Photos() {
     setSortCol(null);
     setSortAsc(true);
     setSelected(new Set());
+    lastClickedRef.current = null;
     if (!isDupTab) setResolution('');
   }, [status]);
 
@@ -147,15 +163,24 @@ export default function Photos() {
   useEffect(() => {
     loadPhotos();
     setSelected(new Set());
+    lastClickedRef.current = null;
   }, [loadPhotos]);
 
   /* Sorted photos (memoised) */
   const sortedPhotos = useMemo(() => {
+    if (isDupTab) {
+      const fn = dupSortKeys[dupSort] || dupSortKeys.similarity;
+      return [...photos].sort((a, b) => {
+        const va = fn(a), vb = fn(b);
+        if (typeof va === 'number' && typeof vb === 'number') return vb - va; // desc similarity
+        return String(va).localeCompare(String(vb));
+      });
+    }
     if (!sortCol) return photos;
     const col = columns.find((c) => c.key === sortCol);
     const sorted = [...photos].sort((a, b) => comparator(a, b, sortCol, col));
     return sortAsc ? sorted : sorted.reverse();
-  }, [photos, sortCol, sortAsc, columns]);
+  }, [photos, sortCol, sortAsc, columns, isDupTab, dupSort]);
 
   const handleSort = (key) => {
     if (sortCol === key) {
@@ -166,18 +191,32 @@ export default function Photos() {
     }
   };
 
-  /* ── Selection ──────────────────────────────────────────────────── */
+  /* ── Selection with shift-click ────────────────────────────────── */
   const selectablePhotos = isDupTab
     ? sortedPhotos
     : sortedPhotos.filter((p) => p.status === 'skipped');
   const allSelectableSelected = selectablePhotos.length > 0 && selectablePhotos.every((p) => selected.has(p.id));
 
-  const toggleOne = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  const toggleOne = (id, index, e) => {
+    if (e?.shiftKey && lastClickedRef.current != null) {
+      // Shift-click: range select between last clicked and current
+      const lo = Math.min(lastClickedRef.current, index);
+      const hi = Math.max(lastClickedRef.current, index);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = lo; i <= hi; i++) {
+          next.add(sortedPhotos[i].id);
+        }
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+      });
+    }
+    lastClickedRef.current = index;
   };
 
   const toggleAllSelectable = () => {
@@ -186,6 +225,7 @@ export default function Photos() {
     } else {
       setSelected(new Set(selectablePhotos.map((p) => p.id)));
     }
+    lastClickedRef.current = null;
   };
 
   /* Override handler (skipped photos) */
@@ -214,10 +254,22 @@ export default function Photos() {
     }
   };
 
-  /* Resolve handler (duplicates) */
-  const handleResolve = async (dupId, res) => {
-    await resolveDuplicate(dupId, res);
-    loadPhotos();
+  /* Resolve handler — stages a pending action, requires confirm */
+  const [pendingResolve, setPendingResolve] = useState(null); // { dupId, resolution }
+  const pendingTimer = useRef(null);
+
+  const stageResolve = (dupId, resolution) => {
+    if (pendingResolve?.dupId === dupId && pendingResolve?.resolution === resolution) {
+      // Second click = confirm
+      clearTimeout(pendingTimer.current);
+      setPendingResolve(null);
+      resolveDuplicate(dupId, resolution).then(() => loadPhotos());
+    } else {
+      // First click = stage
+      clearTimeout(pendingTimer.current);
+      setPendingResolve({ dupId, resolution });
+      pendingTimer.current = setTimeout(() => setPendingResolve(null), 3000);
+    }
   };
 
   /* Bulk resolve handler */
@@ -225,7 +277,7 @@ export default function Photos() {
     if (selected.size === 0) return;
     const selectedPhotos = photos.filter((p) => selected.has(p.id) && p.dup_id);
     if (selectedPhotos.length === 0) return;
-    if (!confirm(`Mark ${selectedPhotos.length} duplicate${selectedPhotos.length > 1 ? 's' : ''} as "${res}"?`)) return;
+    if (!confirm(`${resolutionLabel[res] || res} ${selectedPhotos.length} duplicate${selectedPhotos.length > 1 ? 's' : ''}?`)) return;
     try {
       await Promise.all(selectedPhotos.map((p) => resolveDuplicate(p.dup_id, res)));
       setSelected(new Set());
@@ -236,8 +288,8 @@ export default function Photos() {
   };
 
   /* Hover preview */
-  const handleMouseEnter = (e, photo) => {
-    setPreview({ id: photo.id, x: e.clientX + 16, y: e.clientY - 60 });
+  const handleMouseEnter = (e, photoId) => {
+    setPreview({ id: photoId, x: e.clientX + 16, y: e.clientY - 60 });
   };
 
   const handleMouseMove = (e) => {
@@ -248,14 +300,12 @@ export default function Photos() {
     setPreview(null);
   };
 
-  const label = tabLabels[status] || 'all';
+  const label = tabLabels[status] || status;
   const summaryText = isDupTab
     ? (resolution
         ? `${total.toLocaleString()} ${resolution} duplicate${total !== 1 ? 's' : ''}`
         : `${total.toLocaleString()} duplicate pair${total !== 1 ? 's' : ''} detected`)
-    : (status
-        ? `${total.toLocaleString()} ${label} photo${total !== 1 ? 's' : ''}`
-        : `${total.toLocaleString()} photo${total !== 1 ? 's' : ''} processed across all jobs`);
+    : `${total.toLocaleString()} ${label} photo${total !== 1 ? 's' : ''}`;
 
   return (
     <>
@@ -264,7 +314,7 @@ export default function Photos() {
         <p>{summaryText}</p>
       </div>
       <div className="page-body">
-        {/* Filter bar: job dropdown left, pill tabs right */}
+        {/* Filter bar: job dropdown, pill tabs, resolution sub-filter */}
         <div className="photos-filter-bar">
           <select
             className="form-select"
@@ -277,16 +327,248 @@ export default function Photos() {
             ))}
           </select>
           <PillTabs tabs={tabs} active={status} onChange={setStatus} />
+          {isDupTab && (
+            <>
+              <PillTabs tabs={resolutionTabs} active={resolution} onChange={setResolution} />
+              <select
+                className="form-select dup-sort-select"
+                value={dupSort}
+                onChange={(e) => setDupSort(e.target.value)}
+              >
+                <option value="similarity">Sort: Similarity</option>
+                <option value="filename">Sort: Filename</option>
+                <option value="dup_resolution">Sort: Resolution</option>
+              </select>
+            </>
+          )}
         </div>
 
-        {/* Sub-filter: resolution tabs (visible only on Duplicates pill) */}
-        {isDupTab && (
-          <div className="photos-filter-bar sub-filter">
-            <PillTabs tabs={resolutionTabs} active={resolution} onChange={setResolution} />
+        {/* Content */}
+        {photos.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">{isDupTab ? '✅' : '📭'}</div>
+            <h3>{isDupTab ? 'No duplicates found' : 'No photos found'}</h3>
+            {isDupTab && <p>Run a job with dedup enabled to detect duplicate photos.</p>}
+          </div>
+        ) : isDupTab ? (
+          /* ── Duplicate comparison cards ────────────────────────── */
+          <div className="dup-card-list">
+            {/* Select-all row */}
+            <label className="dup-select-all">
+              <input
+                type="checkbox"
+                checked={allSelectableSelected}
+                onChange={toggleAllSelectable}
+              />
+              Select all ({sortedPhotos.length})
+              <span className="shift-hint">Hold ⇧ Shift to range-select</span>
+            </label>
+
+            {sortedPhotos.map((photo, idx) => {
+              const res = photo.dup_resolution || 'undecided';
+              const pct = (photo.similarity || 0).toFixed(1);
+              const simVariant = (photo.similarity || 0) >= 90 ? 'red' : (photo.similarity || 0) >= 70 ? 'orange' : 'accent';
+              const isSelected = selected.has(photo.id);
+              return (
+                <div key={photo.id} className={`dup-card${isSelected ? ' selected' : ''}`}>
+                  {/* Card header */}
+                  <div className="dup-card-header">
+                    <span className="dup-card-check" role="checkbox" aria-checked={isSelected} onClick={(e) => { e.stopPropagation(); toggleOne(photo.id, idx, e); }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        tabIndex={-1}
+                        onChange={() => {}}
+                      />
+                    </span>
+                    <Badge variant={simVariant}>{pct}% similar</Badge>
+                    <Badge variant={resolutionVariant[res]}>{resolutionLabel[res] || res}</Badge>
+                    <div className="dup-card-actions">
+                      {res !== 'ignore' && (
+                        <button
+                          className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'ignore' ? ' confirming danger' : ' danger'}`}
+                          onClick={() => stageResolve(photo.dup_id, 'ignore')}
+                          title="Do not copy this file"
+                        >
+                          {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'ignore' ? 'Confirm?' : 'Skip'}
+                        </button>
+                      )}
+                      {res !== 'keep_overwrite' && (
+                        <button
+                          className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_overwrite' ? ' confirming' : ''}`}
+                          onClick={() => stageResolve(photo.dup_id, 'keep_overwrite')}
+                          title="Copy and replace the existing file"
+                        >
+                          {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_overwrite' ? 'Confirm?' : 'Overwrite'}
+                        </button>
+                      )}
+                      {res !== 'keep_rename' && (
+                        <button
+                          className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_rename' ? ' confirming' : ''}`}
+                          onClick={() => stageResolve(photo.dup_id, 'keep_rename')}
+                          title="Copy alongside with a renamed filename"
+                        >
+                          {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_rename' ? 'Confirm?' : 'Keep Both'}
+                        </button>
+                      )}
+                      {res !== 'undecided' && (
+                        <button
+                          className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'undecided' ? ' confirming' : ''}`}
+                          onClick={() => stageResolve(photo.dup_id, 'undecided')}
+                        >
+                          {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'undecided' ? 'Confirm?' : 'Reset'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Side-by-side comparison */}
+                  <div className="dup-compare">
+                    {/* ── Source (incoming) photo ── */}
+                    <div className="dup-side source">
+                      <div className="dup-side-label">📥 Source (incoming)</div>
+                      <div className="dup-side-file">
+                        <span
+                          className="filename-preview"
+                          title={photo.filename}
+                          onMouseEnter={(e) => handleMouseEnter(e, photo.id)}
+                          onMouseMove={handleMouseMove}
+                          onMouseLeave={handleMouseLeave}
+                        >
+                          {photo.filename}
+                        </span>
+                      </div>
+                      <div className="dup-side-path mono" title={photo.src_path}>{fmtPath(photo.src_path)}</div>
+                    </div>
+
+                    {/* ── Matched (existing/destination) photo ── */}
+                    <div className="dup-side match">
+                      <div className="dup-side-label">📁 Already in library</div>
+                      <div className="dup-side-file">
+                        {photo.matched_photo_id ? (
+                          <span
+                            className="filename-preview"
+                            title={photo.match_filename || ''}
+                            onMouseEnter={(e) => handleMouseEnter(e, photo.matched_photo_id)}
+                            onMouseMove={handleMouseMove}
+                            onMouseLeave={handleMouseLeave}
+                          >
+                            {photo.match_filename || 'matched photo'}
+                          </span>
+                        ) : (
+                          <span className="mono">{fmtPath(photo.dup_matched_path)}</span>
+                        )}
+                      </div>
+                      <div className="dup-side-path mono" title={photo.match_dest_path || photo.dup_matched_path}>
+                        {fmtPath(photo.match_dest_path || photo.dup_matched_path)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Metadata comparison grid ── */}
+                  <div className="dup-meta-grid">
+                    <div className="dup-meta-header">
+                      <span>Property</span>
+                      <span>Source</span>
+                      <span>Library</span>
+                      <span></span>
+                    </div>
+                    {compareFields.map((f) => {
+                      const srcVal = photo[f.key];
+                      const matchVal = photo[f.matchKey];
+                      const srcFmt = f.fmt(srcVal);
+                      const matchFmt = f.fmt(matchVal);
+                      const bothExist = srcVal != null && matchVal != null;
+                      const isMatch = bothExist && String(srcFmt) === String(matchFmt);
+                      const isMissing = srcVal == null && matchVal == null;
+                      return (
+                        <div key={f.key} className={`dup-meta-row${isMatch ? ' match' : isMissing ? '' : ' differ'}`}>
+                          <span className="dup-meta-label">{f.label}</span>
+                          <span className="dup-meta-val mono">{srcFmt}{f.unit && srcVal != null ? ` ${f.unit}` : ''}</span>
+                          <span className="dup-meta-val mono">{matchFmt}{f.unit && matchVal != null ? ` ${f.unit}` : ''}</span>
+                          <span className="dup-meta-icon">
+                            {isMissing ? '—' : isMatch ? '✓' : '✗'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* ── Standard photo table ────────────────────────────── */
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="col-check">
+                    {selectablePhotos.length > 0 && (
+                      <input
+                        type="checkbox"
+                        checked={allSelectableSelected}
+                        onChange={toggleAllSelectable}
+                        title="Select all skipped photos"
+                      />
+                    )}
+                  </th>
+                  {columns.map((col) => (
+                    <th
+                      key={col.key}
+                      className="sortable-th"
+                      onClick={() => handleSort(col.key)}
+                    >
+                      {col.label}
+                      <span className="sort-indicator">
+                        {sortCol === col.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedPhotos.map((photo, idx) => {
+                  const isSelectable = photo.status === 'skipped';
+                  return (
+                    <tr key={photo.id} className={selected.has(photo.id) ? 'row-selected' : ''}>
+                      <td className="col-check">
+                        {isSelectable && (
+                          <input
+                            type="checkbox"
+                            checked={selected.has(photo.id)}
+                            onChange={(e) => toggleOne(photo.id, idx, e)}
+                          />
+                        )}
+                      </td>
+                      <td className="truncate">
+                        <span
+                          className="filename-preview"
+                          title={photo.filename}
+                          onMouseEnter={(e) => handleMouseEnter(e, photo.id)}
+                          onMouseMove={handleMouseMove}
+                          onMouseLeave={handleMouseLeave}
+                        >
+                          {photo.filename}
+                        </span>
+                        {photo.overridden_at && <Badge variant="cyan">overridden</Badge>}
+                      </td>
+                      <td className="mono">{photo.extension}</td>
+                      <td><Badge variant={statusVariant[photo.status] || 'accent'}>{photo.status}</Badge></td>
+                      <td className="truncate">{photo.skip_reason || '—'}</td>
+                      <td className="mono">{fmtSize(photo.file_size)}</td>
+                      <td className="mono">{photo.width ? `${photo.width}×${photo.height}` : '—'}</td>
+                      <td>{fmtDate(photo.date_taken)}</td>
+                      <td>{fmtDateTime(photo.processed_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {/* Bulk action bar */}
+        {/* Bulk action bar — sticky at bottom */}
         {selected.size > 0 && !isDupTab && (
           <div className="override-bar">
             <span>{selected.size} skipped photo{selected.size > 1 ? 's' : ''} selected</span>
@@ -304,59 +586,11 @@ export default function Photos() {
           <div className="override-bar">
             <span>{selected.size} duplicate{selected.size > 1 ? 's' : ''} selected</span>
             <div className="dup-bulk-actions">
-              <button className="btn sm" onClick={() => handleBulkResolve('keep')}>Keep All</button>
-              <button className="btn sm danger" onClick={() => handleBulkResolve('delete')}>Ignore All</button>
+              <button className="btn sm danger" onClick={() => handleBulkResolve('ignore')}>Skip All</button>
+              <button className="btn sm" onClick={() => handleBulkResolve('keep_overwrite')}>Overwrite All</button>
+              <button className="btn sm" onClick={() => handleBulkResolve('keep_rename')}>Keep Both All</button>
               <button className="btn sm" onClick={() => handleBulkResolve('undecided')}>Reset All</button>
             </div>
-          </div>
-        )}
-
-        {/* Table */}
-        {photos.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">{isDupTab ? '✅' : '📭'}</div>
-            <h3>{isDupTab ? 'No duplicates found' : 'No photos found'}</h3>
-            {isDupTab && <p>Run a job with dedup enabled to detect duplicate photos.</p>}
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th className="col-check">
-                    {selectablePhotos.length > 0 && (
-                      <input
-                        type="checkbox"
-                        checked={allSelectableSelected}
-                        onChange={toggleAllSelectable}
-                        title={isDupTab ? 'Select all duplicates' : 'Select all skipped photos'}
-                      />
-                    )}
-                  </th>
-                  {columns.map((col) => (
-                    <th
-                      key={col.key}
-                      className="sortable-th"
-                      onClick={() => handleSort(col.key)}
-                    >
-                      {col.label}
-                      <span className="sort-indicator">
-                        {sortCol === col.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
-                      </span>
-                    </th>
-                  ))}
-                  {isDupTab && <th>Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {sortedPhotos.map((photo) => {
-                  const isSelectable = isDupTab || photo.status === 'skipped';
-                  return isDupTab
-                    ? renderDupRow(photo, selected, toggleOne, handleResolve, handleMouseEnter, handleMouseMove, handleMouseLeave)
-                    : renderPhotoRow(photo, selected, toggleOne, isSelectable, handleMouseEnter, handleMouseMove, handleMouseLeave);
-                })}
-              </tbody>
-            </table>
           </div>
         )}
 
@@ -376,92 +610,5 @@ export default function Photos() {
         )}
       </div>
     </>
-  );
-}
-
-/* ── Row renderers ────────────────────────────────────────────────── */
-
-function renderPhotoRow(photo, selected, toggleOne, isSelectable, onEnter, onMove, onLeave) {
-  return (
-    <tr key={photo.id} className={selected.has(photo.id) ? 'row-selected' : ''}>
-      <td className="col-check">
-        {isSelectable && (
-          <input
-            type="checkbox"
-            checked={selected.has(photo.id)}
-            onChange={() => toggleOne(photo.id)}
-          />
-        )}
-      </td>
-      <td className="truncate">
-        <span
-          className="filename-preview"
-          onMouseEnter={(e) => onEnter(e, photo)}
-          onMouseMove={onMove}
-          onMouseLeave={onLeave}
-        >
-          {photo.filename}
-        </span>
-        {photo.overridden_at && <Badge variant="cyan">overridden</Badge>}
-      </td>
-      <td className="mono">{photo.extension}</td>
-      <td><Badge variant={statusVariant[photo.status] || 'accent'}>{photo.status}</Badge></td>
-      <td className="truncate">{photo.skip_reason || '—'}</td>
-      <td className="mono">{photo.file_size ? `${(photo.file_size / 1024).toFixed(0)} KB` : '—'}</td>
-      <td className="mono">{photo.width ? `${photo.width}×${photo.height}` : '—'}</td>
-      <td>{fmtDate(photo.date_taken)}</td>
-      <td>{fmtDateTime(photo.processed_at)}</td>
-    </tr>
-  );
-}
-
-function renderDupRow(photo, selected, toggleOne, handleResolve, onEnter, onMove, onLeave) {
-  const pct = (photo.similarity || 0).toFixed(1);
-  const simVariant = (photo.similarity || 0) >= 90 ? 'red' : (photo.similarity || 0) >= 70 ? 'orange' : 'accent';
-  const res = photo.dup_resolution || 'undecided';
-
-  return (
-    <tr key={photo.id} className={selected.has(photo.id) ? 'row-selected' : ''}>
-      <td className="col-check">
-        <input
-          type="checkbox"
-          checked={selected.has(photo.id)}
-          onChange={() => toggleOne(photo.id)}
-        />
-      </td>
-      <td className="truncate">
-        <span
-          className="filename-preview"
-          onMouseEnter={(e) => onEnter(e, photo)}
-          onMouseMove={onMove}
-          onMouseLeave={onLeave}
-        >
-          {photo.filename}
-        </span>
-      </td>
-      <td className="mono">{photo.extension}</td>
-      <td><Badge variant={simVariant}>{pct}%</Badge></td>
-      <td className="truncate mono" title={photo.dup_matched_path}>{fmtPath(photo.dup_matched_path)}</td>
-      <td><Badge variant={resolutionVariant[res]}>{res}</Badge></td>
-      <td className="mono">{photo.width ?? '—'}</td>
-      <td className="mono">{photo.height ?? '—'}</td>
-      <td className="mono">{photo.dpi ?? '—'}</td>
-      <td className="mono">{photo.file_size ? `${(photo.file_size / 1024).toFixed(0)} KB` : '—'}</td>
-      <td>{fmtDate(photo.date_taken)}</td>
-      <td>{fmtDateTime(photo.processed_at)}</td>
-      <td>
-        <div className="dup-actions">
-          {res !== 'keep' && (
-            <button className="btn sm" onClick={() => handleResolve(photo.dup_id, 'keep')}>Keep</button>
-          )}
-          {res !== 'delete' && (
-            <button className="btn sm danger" onClick={() => handleResolve(photo.dup_id, 'delete')}>Ignore</button>
-          )}
-          {res !== 'undecided' && (
-            <button className="btn sm" onClick={() => handleResolve(photo.dup_id, 'undecided')}>Reset</button>
-          )}
-        </div>
-      </td>
-    </tr>
   );
 }

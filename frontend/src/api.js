@@ -27,6 +27,7 @@ export const fetchJobs = (params = {}) => {
   return request(`/jobs${q ? '?' + q : ''}`);
 };
 export const fetchJob      = (id) => request(`/jobs/${id}`);
+export const fetchActiveJobs = () => request('/jobs/active');
 export const createJob     = (body) => request('/jobs', { method: 'POST', body: JSON.stringify(body) });
 export const startJob      = (id) => request(`/jobs/${id}/start`, { method: 'POST' });
 export const cancelJob     = (id) => request(`/jobs/${id}/cancel`, { method: 'POST' });

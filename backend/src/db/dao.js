@@ -86,9 +86,18 @@ function insertPhoto(db, photo) {
 function listPhotos(db, { jobId, status, isDuplicate, resolution, limit = 100, offset = 0 } = {}) {
   let sql = `SELECT p.*,
       d.id AS dup_id, d.similarity, d.matched_path AS dup_matched_path,
-      d.matched_photo_id, d.resolution AS dup_resolution, d.src_path AS dup_src_path
+      d.matched_photo_id, d.resolution AS dup_resolution, d.src_path AS dup_src_path,
+      mp.filename   AS match_filename,
+      mp.extension  AS match_extension,
+      mp.width      AS match_width,
+      mp.height     AS match_height,
+      mp.dpi        AS match_dpi,
+      mp.file_size  AS match_file_size,
+      mp.date_taken AS match_date_taken,
+      mp.dest_path  AS match_dest_path
     FROM photos p
-    LEFT JOIN duplicates d ON d.photo_id = p.id
+    LEFT JOIN duplicates d  ON d.photo_id = p.id
+    LEFT JOIN photos     mp ON mp.id = d.matched_photo_id
     WHERE 1=1`;
   const params = [];
   if (jobId) { sql += ' AND p.job_id = ?'; params.push(jobId); }

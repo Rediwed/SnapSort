@@ -74,6 +74,17 @@ if (fs.existsSync(publicDir)) {
 /* ------------------------------------------------------------------ */
 /*  Start                                                              */
 /* ------------------------------------------------------------------ */
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`SnapSort listening on http://0.0.0.0:${PORT}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n✖  Port ${PORT} is already in use.`);
+    console.error(`   Kill the other process or set a different port:`);
+    console.error(`     PORT=4001 npm run dev --prefix backend\n`);
+  } else {
+    console.error('Server error:', err);
+  }
+  process.exit(1);
 });
