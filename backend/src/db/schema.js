@@ -72,12 +72,25 @@ function initDb(dbPath) {
       status        TEXT NOT NULL DEFAULT 'pending',  -- pending | copied | skipped | error
       skip_reason   TEXT,
       hash          TEXT,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      processed_at  TEXT,
+      overridden_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_photos_job    ON photos(job_id);
     CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status);
     CREATE INDEX IF NOT EXISTS idx_photos_hash   ON photos(hash);
   `);
+
+  /* Migration: add processed_at / overridden_at columns to existing photos tables */
+  try {
+    const photoCols = db.pragma('table_info(photos)').map((c) => c.name);
+    if (!photoCols.includes('processed_at')) {
+      db.exec('ALTER TABLE photos ADD COLUMN processed_at TEXT');
+    }
+    if (!photoCols.includes('overridden_at')) {
+      db.exec('ALTER TABLE photos ADD COLUMN overridden_at TEXT');
+    }
+  } catch { /* table doesn't exist yet — CREATE above handled it */ }
 
   /* ---- duplicates ---- */
   db.exec(`

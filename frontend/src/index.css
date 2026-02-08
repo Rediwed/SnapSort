@@ -663,6 +663,130 @@ td.truncate {
   margin: 0 auto;
 }
 
+/* ================================================================== */
+/*  Photos page — filter bar, preview, override                        */
+/* ================================================================== */
+
+.photos-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.job-dropdown {
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 200px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.job-dropdown:hover,
+.job-dropdown:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.job-dropdown option {
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+/* Override bar */
+.override-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  animation: fadeIn 0.15s ease;
+}
+.btn-override {
+  margin-left: auto;
+  padding: 7px 18px;
+  background: var(--cyan);
+  color: var(--bg);
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.btn-override:hover:not(:disabled) {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+.btn-override:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Checkbox column */
+.col-check {
+  width: 36px;
+  text-align: center;
+  padding: 0 4px !important;
+}
+.col-check input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+tr.row-selected {
+  background: rgba(88, 166, 255, 0.06) !important;
+}
+
+/* Filename hover preview trigger */
+.filename-preview {
+  cursor: default;
+  border-bottom: 1px dotted var(--border);
+  transition: color 0.15s;
+}
+.filename-preview:hover {
+  color: var(--accent);
+}
+
+/* Preview tooltip */
+.photo-preview-tooltip {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  animation: fadeIn 0.12s ease;
+  max-width: 280px;
+  max-height: 280px;
+}
+.photo-preview-tooltip img {
+  display: block;
+  max-width: 268px;
+  max-height: 268px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+/* Overridden badge sits next to filename */
+td .badge.cyan {
+  margin-left: 8px;
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
 /* ---- Animations ---- */
 @keyframes fadeIn {
   from { opacity: 0; }

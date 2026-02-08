@@ -70,13 +70,14 @@ function listPhotoPaths(db, jobId) {
 function insertPhoto(db, photo) {
   const id = photo.id || uuidv4();
   db.prepare(`
-    INSERT INTO photos (id, job_id, src_path, dest_path, filename, extension, file_size, width, height, date_taken, status, skip_reason, hash)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO photos (id, job_id, src_path, dest_path, filename, extension, file_size, width, height, date_taken, status, skip_reason, hash, processed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, photo.jobId, photo.srcPath, photo.destPath || null,
     photo.filename, photo.extension, photo.fileSize || 0,
     photo.width || null, photo.height || null, photo.dateTaken || null,
-    photo.status || 'pending', photo.skipReason || null, photo.hash || null
+    photo.status || 'pending', photo.skipReason || null, photo.hash || null,
+    new Date().toISOString()
   );
   return id;
 }
@@ -209,6 +210,23 @@ function deleteProfile(db, id) {
 }
 
 /* ================================================================== */
+/*  PHOTO OVERRIDES                                                    */
+/* ================================================================== */
+
+function getPhotosByIds(db, ids) {
+  if (!ids.length) return [];
+  const placeholders = ids.map(() => '?').join(',');
+  return db.prepare(`SELECT * FROM photos WHERE id IN (${placeholders})`).all(...ids);
+}
+
+function updatePhotoOverride(db, id, { status, destPath, overriddenAt }) {
+  db.prepare(`
+    UPDATE photos SET status = ?, dest_path = ?, skip_reason = NULL, overridden_at = ?
+    WHERE id = ?
+  `).run(status, destPath || null, overriddenAt, id);
+}
+
+/* ================================================================== */
 /*  DASHBOARD                                                          */
 /* ================================================================== */
 
@@ -240,6 +258,7 @@ function getDashboardStats(db) {
 module.exports = {
   createJob, getJob, listJobs, updateJobStatus, deleteJob,
   insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths,
+  getPhotosByIds, updatePhotoOverride,
   insertDuplicate, listDuplicates, resolveDuplicate, countDuplicates,
   getAllSettings, getSetting, upsertSetting, bulkUpsertSettings,
   listProfiles, getProfile, createProfile, updateProfile, deleteProfile,

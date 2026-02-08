@@ -3,8 +3,11 @@
  */
 
 const { Router } = require('express');
+const fs = require('fs');
+const path = require('path');
 const {
   createJob, getJob, listJobs, updateJobStatus, deleteJob,
+  getPhotosByIds, updatePhotoOverride,
 } = require('../db/dao');
 const { startJob, cancelJob } = require('../services/pythonBridge');
 
@@ -112,6 +115,106 @@ router.delete('/:id/photos', (req, res) => {
   }
   deleteJob(req.db, req.params.id);
   res.json({ deleted, failed, total: paths.length });
+});
+
+/* ================================================================== */
+/*  Override — copy skipped photos that the user wants to keep         */
+/* ================================================================== */
+
+/**
+ * Construct the destination path using the same YYYY/MM/DD structure
+ * the Python organizer uses.
+ */
+function buildDestPath(srcPath, destDir, dateTaken) {
+  const parentFolder = path.basename(path.dirname(srcPath));
+  const ext = path.extname(srcPath);
+  const baseName = path.basename(srcPath, ext);
+  let year = 'unknown', month = '00', day = '00';
+  if (dateTaken) {
+    const dt = new Date(dateTaken);
+    if (!isNaN(dt.getTime())) {
+      year = String(dt.getFullYear());
+      month = String(dt.getMonth() + 1).padStart(2, '0');
+      day = String(dt.getDate()).padStart(2, '0');
+    }
+  }
+  const destFolder = path.join(destDir, year, month, day);
+  const destFilename = `${parentFolder}_${baseName}${ext}`;
+  return path.join(destFolder, destFilename);
+}
+
+router.post('/:id/override', async (req, res) => {
+  const job = getJob(req.db, req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.status !== 'done') return res.status(409).json({ error: 'Can only override a completed job' });
+
+  const { photoIds } = req.body;
+  if (!Array.isArray(photoIds) || photoIds.length === 0) {
+    return res.status(400).json({ error: 'photoIds array is required' });
+  }
+
+  /* Fetch the selected photos & validate they are skipped */
+  const photos = getPhotosByIds(req.db, photoIds);
+  const skipped = photos.filter((p) => p.status === 'skipped' && p.job_id === job.id);
+  if (skipped.length === 0) {
+    return res.status(400).json({ error: 'No skipped photos found for the given IDs' });
+  }
+
+  /* Mark job as overriding */
+  updateJobStatus(req.db, job.id, 'overriding');
+
+  const now = new Date().toISOString();
+  let copiedCount = 0;
+  let errorCount = 0;
+  const results = [];
+
+  for (const photo of skipped) {
+    try {
+      if (!fs.existsSync(photo.src_path)) {
+        results.push({ id: photo.id, error: 'Source file not found' });
+        errorCount++;
+        continue;
+      }
+
+      const destPath = buildDestPath(photo.src_path, job.dest_dir, photo.date_taken);
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+
+      /* Avoid overwriting — append suffix if file exists */
+      let finalDest = destPath;
+      if (fs.existsSync(finalDest)) {
+        const ext = path.extname(destPath);
+        const base = destPath.slice(0, -ext.length);
+        let n = 1;
+        while (fs.existsSync(finalDest)) {
+          finalDest = `${base}_${n}${ext}`;
+          n++;
+        }
+      }
+
+      fs.copyFileSync(photo.src_path, finalDest);
+      updatePhotoOverride(req.db, photo.id, { status: 'copied', destPath: finalDest, overriddenAt: now });
+      copiedCount++;
+      results.push({ id: photo.id, destPath: finalDest });
+    } catch (err) {
+      results.push({ id: photo.id, error: err.message });
+      errorCount++;
+    }
+  }
+
+  /* Adjust job counters */
+  const updatedJob = getJob(req.db, job.id);
+  updateJobStatus(req.db, job.id, 'done', {
+    copied: (updatedJob.copied || 0) + copiedCount,
+    skipped: Math.max(0, (updatedJob.skipped || 0) - copiedCount),
+    errors: (updatedJob.errors || 0) + errorCount,
+  });
+
+  res.json({
+    overridden: copiedCount,
+    errors: errorCount,
+    results,
+    job: getJob(req.db, job.id),
+  });
 });
 
 module.exports = router;

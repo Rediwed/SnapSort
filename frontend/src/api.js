@@ -40,6 +40,12 @@ export const fetchPhotos = (params = {}) => {
   return request(`/photos${q ? '?' + q : ''}`);
 };
 export const fetchPhoto = (id) => request(`/photos/${id}`);
+export const fetchPhotoJobs = () => request('/photos/jobs');
+export const photoPreviewUrl = (id) => `${BASE}/photos/${id}/preview`;
+
+/* ---- Photo Overrides ---- */
+export const overridePhotos = (jobId, photoIds) =>
+  request(`/jobs/${jobId}/override`, { method: 'POST', body: JSON.stringify({ photoIds }) });
 
 /* ---- Duplicates ---- */
 export const fetchDuplicates = (params = {}) => {

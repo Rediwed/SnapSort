@@ -5,7 +5,7 @@ import Modal from '../components/Modal';
 import FilePicker from '../components/FilePicker';
 import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles } from '../api';
 
-const statusVariant = { pending: 'orange', running: 'accent', done: 'green', error: 'red' };
+const statusVariant = { pending: 'orange', running: 'accent', overriding: 'cyan', done: 'green', error: 'red' };
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
@@ -21,10 +21,10 @@ export default function Jobs() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { fetchProfiles().then(setProfiles).catch(console.error); }, []);
 
-  /* Live-poll every 500ms while any job is running */
+  /* Live-poll every 500ms while any job is running or overriding */
   useEffect(() => {
-    const hasRunning = jobs.some((j) => j.status === 'running');
-    if (hasRunning) {
+    const hasActive = jobs.some((j) => j.status === 'running' || j.status === 'overriding');
+    if (hasActive) {
       const id = setInterval(load, 500);
       return () => clearInterval(id);
     }
