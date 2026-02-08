@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import mmap
 import os
 import threading
 from collections import defaultdict
@@ -11,16 +12,44 @@ from difflib import SequenceMatcher
 from typing import Dict, Iterable, Optional, Set, Tuple, cast
 
 
-def compute_partial_hash(filepath: str, max_bytes: int = 1024) -> Optional[str]:
-    """Return a SHA-256 hash of the first *max_bytes* of a file."""
+def compute_partial_hash(filepath: str, max_bytes: int = 8192) -> Optional[str]:
+    """Return a SHA-256 hash by sampling the beginning, middle, and end of a file.
+
+    This uses the same 3-chunk mmap strategy as ``file_hash_fast`` in
+    photo_organizer.py so that hashes produced during seeding are directly
+    comparable to hashes produced during file-exists checks.
+
+    For files smaller than *max_bytes* the entire contents are hashed.
+    """
     try:
-        hasher = hashlib.sha256()
-        with open(filepath, "rb") as handle:
-            chunk = handle.read(max_bytes)
-            if not chunk:
-                return None
-            hasher.update(chunk)
-        return hasher.hexdigest()
+        file_size = os.path.getsize(filepath)
+        if file_size == 0:
+            return None
+
+        # Small files: just read everything
+        if file_size <= max_bytes:
+            with open(filepath, "rb") as f:
+                return hashlib.sha256(f.read()).hexdigest()
+
+        # Larger files: mmap and sample begin + middle + end
+        with open(filepath, "rb") as f:
+            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                hasher = hashlib.sha256()
+                chunk_size = max_bytes // 3
+
+                # Beginning
+                hasher.update(mm[:chunk_size])
+
+                # Middle (only if file is large enough to avoid overlap)
+                if file_size > chunk_size * 6:
+                    mid_start = (file_size // 2) - (chunk_size // 2)
+                    hasher.update(mm[mid_start : mid_start + chunk_size])
+
+                # End (only if file is large enough)
+                if file_size > chunk_size * 2:
+                    hasher.update(mm[-chunk_size:])
+
+                return hasher.hexdigest()
     except Exception:
         return None
 
@@ -32,7 +61,7 @@ class DeduplicationIndex:
         self,
         strict_threshold: float = 90.0,
         log_threshold: float = 70.0,
-        partial_hash_bytes: int = 1024,
+        partial_hash_bytes: int = 8192,
         size_bucket_bytes: int = 65536,
     ) -> None:
         self.strict_threshold = strict_threshold
@@ -146,8 +175,23 @@ class DeduplicationIndex:
     ) -> int:
         """Seed the index with existing files from *directory*.
 
+        Extracts image dimensions and date-taken so that seeded records
+        carry the same metadata richness as records built during processing.
+        This ensures the similarity scoring uses all available weight
+        (resolution: 15%, date_taken: 5%).
+
         Returns the number of files successfully added.
         """
+        # Lazy imports — only needed during seeding
+        try:
+            from PIL import Image
+        except ImportError:
+            Image = None  # type: ignore[assignment]
+        try:
+            from photo_utils import extract_date_taken
+        except ImportError:
+            extract_date_taken = None  # type: ignore[assignment]
+
         supported_lower = tuple(ext.lower() for ext in supported_exts)
         added = 0
         for root, _, files in os.walk(directory):
@@ -156,7 +200,32 @@ class DeduplicationIndex:
                     continue
                 filepath = os.path.join(root, filename)
                 try:
-                    record = self.build_record(filepath, dest_path=filepath)
+                    width = None
+                    height = None
+                    date_taken = None
+
+                    # Extract image dimensions
+                    if Image is not None:
+                        try:
+                            with Image.open(filepath) as img:
+                                width, height = img.size
+                        except Exception:
+                            pass
+
+                    # Extract date taken
+                    if extract_date_taken is not None:
+                        try:
+                            date_taken = extract_date_taken(filepath)
+                        except Exception:
+                            pass
+
+                    record = self.build_record(
+                        filepath,
+                        width=width,
+                        height=height,
+                        date_taken=date_taken,
+                        dest_path=filepath,
+                    )
                     record["status"] = "seeded"
                     record["final_path"] = filepath
                     self.add_record(record)

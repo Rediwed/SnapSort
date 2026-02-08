@@ -34,7 +34,7 @@ FLUSH_INTERVAL = 1000
 
 DEDUP_STRICT_THRESHOLD = 90.0
 DEDUP_LOG_THRESHOLD = 70.0
-DEDUP_PARTIAL_HASH_BYTES = 1024
+DEDUP_PARTIAL_HASH_BYTES = 8192  # Kept in sync with FAST_HASH_BYTES
 
 # Performance optimizations for SSDs
 ENABLE_FAST_HASH = True  # Use optimized hashing for better SSD performance
@@ -483,23 +483,32 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
                         result["skip_reason"] = msg[start + 1:end]
                     break
 
-        # Extract duplicate info from log messages (both skipped & potential)
-        for msg in captured:
-            if "duplicate" in msg.lower() and "similarity" in msg.lower():
-                # Extract similarity percentage
-                import re
-                sim_match = re.search(r'(\d+\.?\d*)\s*%\s*similarity', msg)
-                if sim_match:
-                    result["similarity"] = float(sim_match.group(1))
-                # Extract matched path (after "matches " or "~ ")
-                path_match = re.search(r'(?:matches |~ )(.+)$', msg)
-                if path_match:
-                    result["duplicate_of"] = path_match.group(1).strip()
-                break
-            elif "already exists, identical" in msg.lower():
-                result["similarity"] = 100.0
-                result["duplicate_of"] = dest_path
-                break
+        # ── Extract duplicate info from the dedup index directly ────
+        # The dedup index stores every record that was processed.  We
+        # look up the most recent record for this src_path to get the
+        # similarity score and matched path — no log-parsing needed.
+        if dedup_index:
+            with dedup_index._lock:
+                for rec in reversed(list(dedup_index._records.values())):
+                    if rec.get("src_path") == src_path:
+                        sim = rec.get("similarity")
+                        if sim is not None and sim > 0:
+                            result["similarity"] = float(sim)
+                            result["duplicate_of"] = (
+                                rec.get("matched_final_path")
+                                or rec.get("matched_src_path")
+                                or rec.get("final_path")
+                            )
+                        break
+
+        # Fallback: detect file-exists identical from log messages
+        # (covers the case where dedup_index is None)
+        if result["similarity"] is None:
+            for msg in captured:
+                if "already exists, identical" in msg.lower():
+                    result["similarity"] = 100.0
+                    result["duplicate_of"] = dest_path
+                    break
 
         if status not in ("copied", "skipped"):
             for msg in captured:
@@ -591,11 +600,16 @@ def json_mode():
     max_workers = int(cfg.get("max_worker_threads", 4))
     batch_size = int(cfg.get("batch_size", 25))
     concurrent_copies = int(cfg.get("concurrent_copies", 2))
-    hash_bytes_cfg = int(cfg.get("hash_bytes", 4096))
+    hash_bytes_cfg = int(cfg.get("hash_bytes", 8192))
 
     # Override fast-hash sample size if provided
     global FAST_HASH_BYTES
     FAST_HASH_BYTES = hash_bytes_cfg
+
+    # Override dedup thresholds from settings
+    global DEDUP_STRICT_THRESHOLD, DEDUP_LOG_THRESHOLD
+    DEDUP_STRICT_THRESHOLD = float(cfg.get("dedup_strict_threshold", DEDUP_STRICT_THRESHOLD))
+    DEDUP_LOG_THRESHOLD = float(cfg.get("dedup_log_threshold", DEDUP_LOG_THRESHOLD))
 
     # Sequential processing forces single-threaded
     if sequential:
@@ -623,10 +637,12 @@ def json_mode():
         sys.exit(1)
 
     # ── Dedup index (thread-safe thanks to internal locking) ────────
+    # Use the same hash_bytes for both the dedup index and file_hash_fast
+    # so that seeded hashes match the hashes computed during processing.
     dedup_index = DeduplicationIndex(
         strict_threshold=DEDUP_STRICT_THRESHOLD,
         log_threshold=DEDUP_LOG_THRESHOLD,
-        partial_hash_bytes=DEDUP_PARTIAL_HASH_BYTES,
+        partial_hash_bytes=hash_bytes_cfg,
     )
 
     seeded = dedup_index.seed_from_directory(DEST_DIR, SUPPORTED_EXTENSIONS, log_message)

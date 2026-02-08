@@ -248,18 +248,11 @@ def copy_photo_with_metadata(
 
     dest_path = construct_dest_path(src_path, dest_dir, date_taken)
 
-    if os.path.exists(dest_path):
-        src_hash = file_hash_func(src_path)
-        dest_hash = file_hash_func(dest_path)
-        if src_hash and dest_hash and src_hash == dest_hash:
-            log_message_func(f"Skipped (already exists, identical): {src_path}")
-            if enable_csv_log:
-                log_csv_func("skipped", "already exists, identical", src_path, dest_path)
-            return "skipped", dest_path
-        base, ext = os.path.splitext(os.path.basename(dest_path))
-        timestamp = date_taken.strftime("%Y%m%d_%H%M%S")
-        dest_path = os.path.join(os.path.dirname(dest_path), f"{base}_{timestamp}{ext}")
-
+    # ── Step 1: Dedup index check (primary duplicate detection) ─────
+    # Run BEFORE the file-exists check so that every duplicate —
+    # whether caught by similarity scoring or by exact-hash at the
+    # destination — is recorded in the dedup index and surfaced on the
+    # Duplicates page.
     dedup_record = None
     dedup_match = None
     dedup_score = 0.0
@@ -293,7 +286,7 @@ def copy_photo_with_metadata(
                 if enable_csv_log:
                     log_csv_func(
                         "skipped",
-                        f"duplicate {dedup_score:.1f%}",
+                        f"duplicate {dedup_score:.1f}%",
                         src_path,
                         match_path or "",
                     )
@@ -310,10 +303,33 @@ def copy_photo_with_metadata(
                 if enable_csv_log:
                     log_csv_func(
                         "notice",
-                        f"potential duplicate {dedup_score:.1f%}",
+                        f"potential duplicate {dedup_score:.1f}%",
                         src_path,
                         match_path or "",
                     )
+
+    # ── Step 2: File-exists safety net ──────────────────────────────
+    # If an identical file already sits at the destination path, skip
+    # the copy but still record the event in the dedup index so the
+    # Duplicates page reflects it.
+    if os.path.exists(dest_path):
+        src_hash = file_hash_func(src_path)
+        dest_hash = file_hash_func(dest_path)
+        if src_hash and dest_hash and src_hash == dest_hash:
+            log_message_func(f"Skipped (already exists, identical): {src_path}")
+            if enable_csv_log:
+                log_csv_func("skipped", "already exists, identical", src_path, dest_path)
+            # Record in dedup index so Duplicates page shows it
+            if dedup_index and dedup_record:
+                dedup_record["status"] = "skipped_duplicate"
+                dedup_record["similarity"] = 100.0
+                dedup_record["matched_final_path"] = dest_path
+                dedup_record["final_path"] = dest_path
+                dedup_index.add_record(dedup_record)
+            return "skipped", dest_path
+        base, ext = os.path.splitext(os.path.basename(dest_path))
+        timestamp = date_taken.strftime("%Y%m%d_%H%M%S")
+        dest_path = os.path.join(os.path.dirname(dest_path), f"{base}_{timestamp}{ext}")
 
     try:
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)

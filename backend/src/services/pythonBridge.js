@@ -57,6 +57,9 @@ function startJob(db, job) {
     json_output: true,
     /* Performance / threading (merged from profile + global settings) */
     ...perfConfig,
+    /* Dedup thresholds from global settings */
+    dedup_strict_threshold: settings.dedup_strict_threshold || '90',
+    dedup_log_threshold: settings.dedup_log_threshold || '70',
     /* Supported file formats (comma-separated extensions) */
     supported_extensions: settings.supported_extensions || '',
   });
