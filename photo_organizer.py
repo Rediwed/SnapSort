@@ -481,6 +481,8 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
         "date_taken": None,
         "skip_reason": None,
         "bytes_copied": 0,
+        "duplicate_of": None,
+        "similarity": None,
     }
 
     # Capture log messages so we can extract skip reasons.
@@ -512,7 +514,26 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
                     if start != -1 and end != -1:
                         result["skip_reason"] = msg[start + 1:end]
                     break
-        else:
+
+        # Extract duplicate info from log messages (both skipped & potential)
+        for msg in captured:
+            if "duplicate" in msg.lower() and "similarity" in msg.lower():
+                # Extract similarity percentage
+                import re
+                sim_match = re.search(r'(\d+\.?\d*)\s*%\s*similarity', msg)
+                if sim_match:
+                    result["similarity"] = float(sim_match.group(1))
+                # Extract matched path (after "matches " or "~ ")
+                path_match = re.search(r'(?:matches |~ )(.+)$', msg)
+                if path_match:
+                    result["duplicate_of"] = path_match.group(1).strip()
+                break
+            elif "already exists, identical" in msg.lower():
+                result["similarity"] = 100.0
+                result["duplicate_of"] = dest_path
+                break
+
+        if status not in ("copied", "skipped"):
             for msg in captured:
                 if "Error" in msg:
                     result["skip_reason"] = msg
@@ -690,6 +711,16 @@ def json_mode():
                 "date_taken": r["date_taken"],
                 "skip_reason": r["skip_reason"],
             })
+
+            # Emit duplicate event when dedup info is available
+            if r.get("similarity") is not None and r["similarity"] > 0:
+                emit({
+                    "event": "duplicate",
+                    "src_path": r["src_path"],
+                    "matched_path": r.get("duplicate_of"),
+                    "similarity": r["similarity"],
+                })
+
             emit({
                 "event": "progress",
                 "processed": counters["processed"],

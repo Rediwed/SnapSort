@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Badge from '../components/Badge';
 import PillTabs from '../components/PillTabs';
 import { fetchPhotos, fetchPhotoJobs, photoPreviewUrl, overridePhotos } from '../api';
@@ -14,26 +14,56 @@ const tabs = [
 
 const tabLabels = { '': 'all', copied: 'copied', skipped: 'skipped', error: 'error' };
 
+/* System locale date formatting — respects the user's OS/browser settings */
 const fmtDate = (d) => {
   if (!d) return '—';
   const dt = new Date(d);
   if (isNaN(dt.getTime())) return '—';
-  return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return dt.toLocaleDateString();
 };
 
 const fmtDateTime = (d) => {
   if (!d) return '—';
   const dt = new Date(d);
   if (isNaN(dt.getTime())) return '—';
-  return dt.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return dt.toLocaleString();
 };
 
 const fmtJobLabel = (job) => {
   const dir = job.source_dir.split('/').pop() || job.source_dir;
   const date = new Date(job.created_at);
-  const short = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const short = date.toLocaleString();
   return `${dir} — ${short}`;
 };
+
+/* Column definitions for sortable headers */
+const columnDefs = [
+  { key: 'filename',     label: 'Filename' },
+  { key: 'extension',    label: 'Ext' },
+  { key: 'status',       label: 'Status' },
+  { key: 'skip_reason',  label: 'Reason' },
+  { key: 'file_size',    label: 'Size' },
+  { key: 'dimensions',   label: 'W×H',         sortKey: (r) => (r.width || 0) * (r.height || 0) },
+  { key: 'date_taken',   label: 'Date Taken' },
+  { key: 'processed_at', label: 'Processed' },
+];
+
+function comparator(a, b, key, col) {
+  let va, vb;
+  if (col?.sortKey) {
+    va = col.sortKey(a);
+    vb = col.sortKey(b);
+  } else {
+    va = a[key];
+    vb = b[key];
+  }
+  /* Nulls / empties always sort last */
+  if (va == null && vb == null) return 0;
+  if (va == null) return 1;
+  if (vb == null) return -1;
+  if (typeof va === 'number' && typeof vb === 'number') return va - vb;
+  return String(va).localeCompare(String(vb), undefined, { sensitivity: 'base' });
+}
 
 export default function Photos() {
   const [status, setStatus] = useState('');
@@ -43,6 +73,10 @@ export default function Photos() {
   const [selectedJobId, setSelectedJobId] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [overriding, setOverriding] = useState(false);
+
+  /* Sort state */
+  const [sortCol, setSortCol] = useState(null);   // column key
+  const [sortAsc, setSortAsc] = useState(true);
 
   /* Hover preview state */
   const [preview, setPreview] = useState(null); // { id, x, y }
@@ -69,8 +103,25 @@ export default function Photos() {
     setSelected(new Set());
   }, [loadPhotos]);
 
+  /* Sorted photos (memoised) */
+  const sortedPhotos = useMemo(() => {
+    if (!sortCol) return photos;
+    const col = columnDefs.find((c) => c.key === sortCol);
+    const sorted = [...photos].sort((a, b) => comparator(a, b, sortCol, col));
+    return sortAsc ? sorted : sorted.reverse();
+  }, [photos, sortCol, sortAsc]);
+
+  const handleSort = (key) => {
+    if (sortCol === key) {
+      setSortAsc((prev) => !prev);
+    } else {
+      setSortCol(key);
+      setSortAsc(true);
+    }
+  };
+
   /* Checkbox helpers */
-  const skippedPhotos = photos.filter((p) => p.status === 'skipped');
+  const skippedPhotos = sortedPhotos.filter((p) => p.status === 'skipped');
   const allSkippedSelected = skippedPhotos.length > 0 && skippedPhotos.every((p) => selected.has(p.id));
 
   const toggleOne = (id) => {
@@ -148,7 +199,7 @@ export default function Photos() {
         {/* Filter bar: job dropdown left, pill tabs right */}
         <div className="photos-filter-bar">
           <select
-            className="job-dropdown"
+            className="form-select"
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
           >
@@ -185,7 +236,6 @@ export default function Photos() {
             <table>
               <thead>
                 <tr>
-                  {/* Checkbox column – only for skipped filter or when skipped exist */}
                   <th className="col-check">
                     {skippedPhotos.length > 0 && (
                       <input
@@ -196,18 +246,22 @@ export default function Photos() {
                       />
                     )}
                   </th>
-                  <th>Filename</th>
-                  <th>Ext</th>
-                  <th>Status</th>
-                  <th>Reason</th>
-                  <th>Size</th>
-                  <th>W×H</th>
-                  <th>Date Taken</th>
-                  <th>Processed</th>
+                  {columnDefs.map((col) => (
+                    <th
+                      key={col.key}
+                      className="sortable-th"
+                      onClick={() => handleSort(col.key)}
+                    >
+                      {col.label}
+                      <span className="sort-indicator">
+                        {sortCol === col.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {photos.map((photo) => (
+                {sortedPhotos.map((photo) => (
                   <tr key={photo.id} className={selected.has(photo.id) ? 'row-selected' : ''}>
                     <td className="col-check">
                       {photo.status === 'skipped' && (

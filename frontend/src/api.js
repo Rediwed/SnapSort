@@ -52,8 +52,11 @@ export const fetchDuplicates = (params = {}) => {
   const q = new URLSearchParams(params).toString();
   return request(`/duplicates${q ? '?' + q : ''}`);
 };
+export const fetchDuplicateJobs = () => request('/duplicates/jobs');
 export const resolveDuplicate = (id, resolution) =>
   request(`/duplicates/${id}`, { method: 'PATCH', body: JSON.stringify({ resolution }) });
+export const deleteDuplicateFile = (id) =>
+  request(`/duplicates/${id}/file`, { method: 'DELETE' });
 
 /* ---- Settings ---- */
 export const fetchSettings = () => request('/settings');

@@ -351,6 +351,19 @@ thead th {
   white-space: nowrap;
 }
 
+th.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--transition);
+}
+th.sortable-th:hover {
+  color: var(--text-primary);
+}
+.sort-indicator {
+  font-size: 10px;
+  color: var(--accent);
+}
+
 tbody td {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-light);
@@ -675,26 +688,16 @@ td.truncate {
   flex-wrap: wrap;
 }
 
-.job-dropdown {
-  background: var(--surface);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 12px;
+.photos-filter-bar .form-select {
+  width: auto;
+  min-width: 220px;
+  padding: 6px 32px 6px 12px;
   font-size: 13px;
-  font-family: inherit;
-  min-width: 200px;
-  cursor: pointer;
-  transition: border-color 0.15s;
+  height: 36px;
 }
-.job-dropdown:hover,
-.job-dropdown:focus {
-  border-color: var(--accent);
-  outline: none;
-}
-.job-dropdown option {
-  background: var(--bg);
-  color: var(--text-primary);
+
+.photos-filter-bar .pill-tabs {
+  margin-bottom: 0;
 }
 
 /* Override bar */
@@ -785,6 +788,13 @@ td .badge.cyan {
   margin-left: 8px;
   font-size: 10px;
   padding: 1px 6px;
+}
+
+/* Duplicate action buttons */
+.dup-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
 }
 
 /* ---- Animations ---- */

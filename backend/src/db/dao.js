@@ -117,10 +117,11 @@ function insertDuplicate(db, dup) {
   return id;
 }
 
-function listDuplicates(db, { jobId, limit = 100, offset = 0 } = {}) {
+function listDuplicates(db, { jobId, resolution, limit = 100, offset = 0 } = {}) {
   let sql = 'SELECT * FROM duplicates WHERE 1=1';
   const params = [];
   if (jobId) { sql += ' AND job_id = ?'; params.push(jobId); }
+  if (resolution) { sql += ' AND COALESCE(resolution, \'undecided\') = ?'; params.push(resolution); }
   sql += ' ORDER BY similarity DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
   return db.prepare(sql).all(...params);
@@ -130,10 +131,11 @@ function resolveDuplicate(db, id, resolution) {
   db.prepare('UPDATE duplicates SET resolution = ? WHERE id = ?').run(resolution, id);
 }
 
-function countDuplicates(db, { jobId } = {}) {
+function countDuplicates(db, { jobId, resolution } = {}) {
   let sql = 'SELECT COUNT(*) AS count FROM duplicates WHERE 1=1';
   const params = [];
   if (jobId) { sql += ' AND job_id = ?'; params.push(jobId); }
+  if (resolution) { sql += ' AND COALESCE(resolution, \'undecided\') = ?'; params.push(resolution); }
   return db.prepare(sql).get(...params).count;
 }
 
