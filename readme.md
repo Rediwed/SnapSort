@@ -39,13 +39,40 @@ Real-time feedback during operation:
 A full-stack web interface for managing photo organization visually:
 
 - **Dashboard** — overview stats across all jobs
-- **Jobs** — create, start, monitor, and delete organization runs with live progress bars
+- **Jobs** — create, start, monitor, and delete organization runs with live progress bars; choose a performance profile per job with a settings summary preview
 - **Photos** — browse all processed photos with status filtering (copied/skipped/error), skip reasons, dimensions, date taken
 - **Duplicates** — review flagged duplicate pairs
-- **Benchmarks** — run and compare hash performance benchmarks
-- **Settings** — configure application preferences
+- **Benchmarks** — test real storage I/O on your source & destination folders, identify the bottleneck, and get a recommended performance profile (see below)
+- **Settings** — configure filter, quality, performance, and format defaults with responsive grid layout
 - **File Picker** — server-side directory browser with external drive detection
 - **Test Data** — one-click test dataset loading for development and validation
+- **Responsive** — fully responsive layout with a mobile top-down drawer navigation; all pages adapt from desktop to phone
+
+### 📊 Storage Benchmarks & Profile Suggestions
+SnapSort can benchmark the actual drives you'll use and recommend the best performance profile:
+
+1. **Select your source and destination folders** using the file picker (with drive detection)
+2. **Automated testing** measures sequential read, sequential write, and copy throughput on both volumes, plus single-thread and multi-thread hash speed using `ThreadPoolExecutor`
+3. **Bottleneck analysis** identifies whether the source volume, destination volume, or CPU hashing is the limiting factor — shown with a visual bar chart
+4. **Profile recommendation** suggests the best built-in profile based on the *slowest storage* in the chain — because the bottleneck sets the pace
+5. **One-click apply** writes the recommended profile's settings as your global defaults
+
+Same source/destination path is blocked at both the frontend and backend.
+
+### ⚡ Performance Profiles
+SnapSort ships with 7 built-in performance profiles tuned for different storage types:
+
+| Profile | Workers | Batch | Hash KB | Copies | Threading | I/O Mode |
+|---------|---------|-------|---------|--------|-----------|----------|
+| NVMe Gen4 SSD | 16 | 100 | 16384 | 8 | Multi | Parallel |
+| NVMe Gen3 SSD | 12 | 75 | 8192 | 6 | Multi | Parallel |
+| SATA SSD | 8 | 50 | 4096 | 4 | Multi | Parallel |
+| 7200 RPM HDD | 1 | 10 | 4096 | 1 | Single | Sequential |
+| 5400 RPM HDD | 1 | 5 | 2048 | 1 | Single | Sequential |
+| USB External | 2 | 15 | 2048 | 1 | Single | Sequential |
+| Default | 4 | 25 | 4096 | 2 | Multi | Parallel |
+
+Profiles can be applied globally from Settings, per-job during job creation, or automatically from benchmark results. You can also create custom profiles.
 
 ### �️ Source Safety Guarantee
 SnapSort will **never** write to, modify, rename, move, or delete any file or directory in your source locations. Source drives and directories are treated as **strictly read-only** at every layer of the application:
@@ -53,6 +80,7 @@ SnapSort will **never** write to, modify, rename, move, or delete any file or di
 - **Python engine**: Every copy operation verifies the destination is not inside the source directory before writing. A `RuntimeError` is raised if violated.
 - **Node.js backend**: A dedicated `sourceGuard` module checks every destructive file operation against all known source directories. Job creation is rejected if the source and destination directories overlap in any direction.
 - **API layer**: No endpoint exists that can modify or delete source files. The only file operations SnapSort performs on disk are writing to the destination directory and cleaning up its own output.
+- **Overlap protection**: Job creation is rejected if source and destination paths overlap in any direction (same directory, destination inside source, or source inside destination). Enforced at the Python engine, Node.js backend, and React frontend.
 
 This is SnapSort's **#1 invariant** — enforced by defense-in-depth across the full stack.
 
@@ -79,13 +107,14 @@ SnapSort/
 ├── backend/                   # Node.js Express API
 │   └── src/
 │       ├── index.js           # Express server (serves API + SPA)
-│       ├── db/                # SQLite schema + DAO
-│       ├── routes/            # REST endpoints (jobs, photos, duplicates, etc.)
+│       ├── sourceGuard.js     # Read-only enforcement for source paths
+│       ├── db/                # SQLite schema + DAO (incl. performance_profiles table)
+│       ├── routes/            # REST endpoints (jobs, photos, duplicates, benchmarks, profiles, etc.)
 │       └── services/          # Python bridge (spawns organizer, streams events)
 ├── frontend/                  # React 18 + Vite SPA
 │   └── src/
 │       ├── pages/             # Dashboard, Jobs, Photos, Duplicates, etc.
-│       ├── components/        # Modal, DataTable, FilePicker, Badge, etc.
+│       ├── components/        # Modal, DataTable, FilePicker, Badge, StatCard, Sidebar, etc.
 │       └── styles/            # Custom CSS dark theme
 ├── Dockerfile                 # Unified multi-stage build
 ├── docker-compose.yml         # Single-service deployment
