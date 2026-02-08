@@ -418,6 +418,128 @@ def file_hash_fast(filepath, max_bytes=8192):
     except Exception:
         return None
 
+
+# ── Shared processing helpers (used by json_mode, parallel_organizer, CLI) ──
+
+
+# Directories that os.walk should never descend into.
+_SKIP_DIRS = frozenset({
+    'system32', 'windows', 'program files', 'program files (x86)',
+    'appdata', 'cache', 'temp', 'tmp', 'recycler', '$recycle.bin',
+    'system volume information', 'config.msi', 'msocache',
+})
+
+
+def optimized_directory_scan(source_dir, supported_extensions):
+    """Fast directory scan that prunes system dirs from os.walk in-place.
+
+    Returns a flat list of absolute file paths whose extension matches
+    *supported_extensions*.  Directories listed in ``_SKIP_DIRS`` are
+    never entered — the check modifies *dirs* in-place so ``os.walk``
+    does not recurse into them.
+    """
+    files = []
+    supported_lower = tuple(ext.lower() for ext in supported_extensions)
+
+    for root, dirs, filenames in os.walk(source_dir):
+        root_lower = root.lower()
+        if any(skip in root_lower for skip in _SKIP_DIRS):
+            continue
+        # Prune child dirs so os.walk will not descend into them.
+        dirs[:] = [d for d in dirs if d.lower() not in _SKIP_DIRS]
+        for fname in filenames:
+            if fname.lower().endswith(supported_lower):
+                files.append(os.path.join(root, fname))
+    return files
+
+
+def process_single_file(src_path, dest_dir, min_width, min_height,
+                        min_filesize, supported_extensions, system_folders,
+                        hash_func, dedup_index):
+    """Process one photo file — extract metadata, copy, and return a result dict.
+
+    The result dict always contains:
+      status      – "copied" | "skipped" | "error"
+      src_path    – the original path
+      dest_path   – destination path (or None)
+      filename    – basename
+      file_size   – source file size in bytes
+      width       – image width  (or None)
+      height      – image height (or None)
+      date_taken  – ISO-format string (or None)
+      skip_reason – human-readable reason (or None)
+      bytes_copied – bytes of the destination file (0 unless copied)
+    """
+    result = {
+        "status": None,
+        "src_path": src_path,
+        "dest_path": None,
+        "filename": os.path.basename(src_path),
+        "file_size": 0,
+        "width": None,
+        "height": None,
+        "date_taken": None,
+        "skip_reason": None,
+        "bytes_copied": 0,
+    }
+
+    # Capture log messages so we can extract skip reasons.
+    captured = []
+    def _log(msg):
+        captured.append(msg)
+
+    try:
+        result["file_size"] = os.path.getsize(src_path)
+        status, dest_path = copy_photo_with_metadata(
+            src_path, dest_dir, min_width, min_height, min_filesize,
+            supported_extensions, system_folders, False,
+            hash_func, log_csv, _log,
+            dedup_index=dedup_index,
+        )
+        result["status"] = status
+        result["dest_path"] = dest_path
+
+        if status == "copied" and dest_path:
+            try:
+                result["bytes_copied"] = os.path.getsize(dest_path)
+            except OSError:
+                pass
+        elif status == "skipped":
+            for msg in captured:
+                if "Skipped" in msg:
+                    start = msg.find("(")
+                    end = msg.find(")")
+                    if start != -1 and end != -1:
+                        result["skip_reason"] = msg[start + 1:end]
+                    break
+        else:
+            for msg in captured:
+                if "Error" in msg:
+                    result["skip_reason"] = msg
+                    break
+
+    except Exception as exc:
+        result["status"] = "error"
+        result["skip_reason"] = str(exc)
+
+    # Image dimensions
+    try:
+        from PIL import Image as _Img
+        with _Img.open(src_path) as im:
+            result["width"], result["height"] = im.size
+    except Exception:
+        pass
+
+    # Date taken
+    try:
+        dt = extract_date_taken(src_path)
+        if dt:
+            result["date_taken"] = dt.isoformat()
+    except Exception:
+        pass
+
+    return result
+
 def json_mode():
     """Run the organizer in JSON-line mode (called by the Node.js backend).
 
@@ -427,15 +549,30 @@ def json_mode():
     Emits newline-delimited JSON events to stdout:
       { "event": "progress", ... }
       { "event": "photo", ... }
-      { "event": "duplicate", ... }
       { "event": "done", "summary": { ... } }
       { "event": "error", "message": "..." }
+
+    When ``enable_multithreading`` is ``"true"`` in the config the file
+    processing loop uses a ``ThreadPoolExecutor`` — the same batched
+    strategy as ``parallel_organizer.py`` — while still emitting the
+    per-file JSON events that the Node.js bridge expects.
     """
     import json as _json
+    import threading as _threading
+
+    # Serialises counter updates + stdout writes so threaded
+    # batches don't interleave JSON lines.
+    # RLock allows the same thread to re-enter (e.g. _handle_result
+    # holds it, then calls emit() which also acquires it).
+    _emit_lock = _threading.RLock()
 
     def emit(obj):
-        print(_json.dumps(obj, default=str), flush=True)
+        """Write a single JSON line to stdout.  Thread-safe via _emit_lock."""
+        line = _json.dumps(obj, default=str)
+        with _emit_lock:
+            print(line, flush=True)
 
+    # ── Parse config from stdin ─────────────────────────────────────
     try:
         raw = sys.stdin.read()
         cfg = _json.loads(raw)
@@ -462,17 +599,17 @@ def json_mode():
     # Multi-threading configuration
     use_threading = cfg.get("enable_multithreading", "false") == "true"
     max_workers = int(cfg.get("max_worker_threads", 8))
-    hash_workers = int(cfg.get("parallel_hash_workers", 4))
+    batch_size = 50
 
     if use_threading:
         try:
-            import concurrent.futures
-            import threading
-            emit({"event": "progress", "message": f"Multi-threading enabled: {max_workers} workers, {hash_workers} hash workers"})
+            import concurrent.futures as _cf
+            emit({"event": "progress", "message": f"Multi-threading enabled: {max_workers} workers"})
         except ImportError:
             use_threading = False
-            emit({"event": "progress", "message": "Multi-threading requested but concurrent.futures not available, falling back to sequential"})
+            emit({"event": "progress", "message": "concurrent.futures unavailable, falling back to sequential"})
 
+    # ── Validate paths ──────────────────────────────────────────────
     if not SOURCE_DIR or not os.path.isdir(SOURCE_DIR):
         emit({"event": "error", "message": f"Source directory does not exist: {SOURCE_DIR}"})
         sys.exit(1)
@@ -483,6 +620,7 @@ def json_mode():
         emit({"event": "error", "message": f"Cannot create destination: {DEST_DIR} ({e})"})
         sys.exit(1)
 
+    # ── Dedup index (thread-safe thanks to internal locking) ────────
     dedup_index = DeduplicationIndex(
         strict_threshold=DEDUP_STRICT_THRESHOLD,
         log_threshold=DEDUP_LOG_THRESHOLD,
@@ -493,126 +631,103 @@ def json_mode():
     if seeded:
         emit({"event": "progress", "message": f"Seeded dedup index with {seeded} existing files"})
 
-    # Count total files first for progress reporting
-    total_files = 0
-    for root, _dirs, files in os.walk(SOURCE_DIR):
-        for f in files:
-            if f.lower().endswith(SUPPORTED_EXTENSIONS):
-                total_files += 1
+    # ── Phase 1: fast directory scan (prunes system dirs) ───────────
+    all_files = optimized_directory_scan(SOURCE_DIR, SUPPORTED_EXTENSIONS)
+    total_files = len(all_files)
 
-    emit({"event": "progress", "processed": 0, "copied": 0, "skipped": 0, "errors": 0, "total_files": total_files})
+    emit({"event": "progress", "processed": 0, "copied": 0, "skipped": 0,
+          "errors": 0, "total_files": total_files})
 
-    processed = 0
-    copied = 0
-    skipped = 0
-    errs = 0
-    total_bytes = 0
     hash_func = file_hash_fast if ENABLE_FAST_HASH else file_hash
 
-    for root, _dirs, files in os.walk(SOURCE_DIR):
-        for file in files:
-            if not file.lower().endswith(SUPPORTED_EXTENSIONS):
-                continue
-            src_path = os.path.join(root, file)
-            dest_path = None
-            skip_reason = None
-            status = None
-            width = None
-            height = None
-            date_taken_str = None
-            file_size = 0
-            file_hash_val = None
+    # Shared mutable counters — only mutated from ``_handle_result`` which
+    # is called from within the _emit_lock in threaded mode, or sequentially.
+    counters = {"processed": 0, "copied": 0, "skipped": 0, "errors": 0, "total_bytes": 0}
 
-            # Capture log messages during processing to extract skip reasons
-            _captured_logs = []
-            def _capture_log(msg):
-                _captured_logs.append(msg)
+    def _handle_result(r):
+        """Emit JSON events for a single processed file and update counters.
 
-            try:
-                file_size = os.path.getsize(src_path)
-                result, dest_path = copy_photo_with_metadata(
-                    src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
-                    SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, False,
-                    hash_func, log_csv, _capture_log,
-                    dedup_index=dedup_index
-                )
-                status = result
-                if result == "copied":
-                    copied += 1
-                    if dest_path:
-                        total_bytes += os.path.getsize(dest_path)
-                elif result == "skipped":
-                    skipped += 1
-                    # Extract skip reason from captured log messages
-                    for msg in _captured_logs:
-                        if "Skipped" in msg:
-                            # Parse "Skipped (reason): path" -> "reason"
-                            start = msg.find("(")
-                            end = msg.find(")")
-                            if start != -1 and end != -1:
-                                skip_reason = msg[start + 1:end]
-                            break
-                else:
-                    errs += 1
-                    for msg in _captured_logs:
-                        if "Error" in msg:
-                            skip_reason = msg
-                            break
-            except Exception as e:
-                status = "error"
-                skip_reason = str(e)
-                errs += 1
-
-            processed += 1
-
-            # Try to get image dimensions
-            try:
-                from PIL import Image as _Img
-                with _Img.open(src_path) as _im:
-                    width, height = _im.size
-            except Exception:
-                pass
-
-            # Try to get date taken
-            try:
-                dt = extract_date_taken(src_path)
-                if dt:
-                    date_taken_str = dt.isoformat()
-            except Exception:
-                pass
+        Acquires ``_emit_lock`` so the counter mutation and the two
+        ``emit()`` calls are atomic — no interleaved JSON lines.
+        """
+        with _emit_lock:
+            counters["processed"] += 1
+            if r["status"] == "copied":
+                counters["copied"] += 1
+                counters["total_bytes"] += r["bytes_copied"]
+            elif r["status"] == "skipped":
+                counters["skipped"] += 1
+            else:
+                counters["errors"] += 1
 
             emit({
                 "event": "photo",
-                "src_path": src_path,
-                "dest_path": dest_path,
-                "filename": file,
-                "status": status,
-                "file_size": file_size,
-                "width": width,
-                "height": height,
-                "date_taken": date_taken_str,
-                "skip_reason": skip_reason,
+                "src_path": r["src_path"],
+                "dest_path": r["dest_path"],
+                "filename": r["filename"],
+                "status": r["status"],
+                "file_size": r["file_size"],
+                "width": r["width"],
+                "height": r["height"],
+                "date_taken": r["date_taken"],
+                "skip_reason": r["skip_reason"],
             })
-
-            # Emit progress every file
             emit({
                 "event": "progress",
-                "processed": processed,
-                "copied": copied,
-                "skipped": skipped,
-                "errors": errs,
+                "processed": counters["processed"],
+                "copied": counters["copied"],
+                "skipped": counters["skipped"],
+                "errors": counters["errors"],
                 "total_files": total_files,
             })
 
+    # Common args for process_single_file
+    _common = dict(
+        dest_dir=DEST_DIR,
+        min_width=MIN_WIDTH,
+        min_height=MIN_HEIGHT,
+        min_filesize=MIN_FILESIZE,
+        supported_extensions=SUPPORTED_EXTENSIONS,
+        system_folders=SYSTEM_FOLDERS,
+        hash_func=hash_func,
+        dedup_index=dedup_index,
+    )
+
+    # ── Phase 2: process files ──────────────────────────────────────
+    if use_threading and total_files > 0:
+        import concurrent.futures as _cf
+
+        # Split into batches
+        batches = [all_files[i:i + batch_size] for i in range(0, total_files, batch_size)]
+
+        def _process_batch(batch):
+            """Process a batch and return list of result dicts."""
+            return [process_single_file(fp, **_common) for fp in batch]
+
+        with _cf.ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [pool.submit(_process_batch, b) for b in batches]
+            for future in _cf.as_completed(futures):
+                try:
+                    for r in future.result():
+                        _handle_result(r)
+                except Exception as exc:
+                    emit({"event": "error", "message": f"Batch error: {exc}"})
+    else:
+        # Sequential — same logic, no threading overhead
+        for fp in all_files:
+            r = process_single_file(fp, **_common)
+            _handle_result(r)
+
+    # ── Done ────────────────────────────────────────────────────────
     emit({
         "event": "done",
         "summary": {
             "total_files": total_files,
-            "processed": processed,
-            "copied": copied,
-            "skipped": skipped,
-            "errors": errs,
-            "total_bytes": total_bytes,
+            "processed": counters["processed"],
+            "copied": counters["copied"],
+            "skipped": counters["skipped"],
+            "errors": counters["errors"],
+            "total_bytes": counters["total_bytes"],
         },
     })
 

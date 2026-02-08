@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
 from collections import defaultdict
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -41,6 +42,8 @@ class DeduplicationIndex:
 
         self._records: Dict[int, Dict[str, object]] = {}
         self._next_id = 1
+
+        self._lock = threading.Lock()
 
         self._by_partial_hash: Dict[str, Set[int]] = defaultdict(set)
         self._by_size_exact: Dict[int, Set[int]] = defaultdict(set)
@@ -81,51 +84,59 @@ class DeduplicationIndex:
     def find_best_match(
         self, record: Dict[str, object]
     ) -> Tuple[float, Optional[Dict[str, object]]]:
-        """Return the best similarity score and matching record for *record*."""
-        candidate_ids = self._gather_candidate_ids(record)
-        best_score = 0.0
-        best_record: Optional[Dict[str, object]] = None
+        """Return the best similarity score and matching record for *record*.
 
-        for candidate_id in candidate_ids:
-            candidate = self._records.get(candidate_id)
-            if not candidate:
-                continue
-            if candidate.get("src_path") == record.get("src_path"):
-                continue
-            score = self._calculate_similarity(record, candidate)
-            if score > best_score:
-                best_score = score
-                best_record = candidate
-        return best_score, best_record
+        Thread-safe: acquires the internal lock while traversing the index.
+        """
+        with self._lock:
+            candidate_ids = self._gather_candidate_ids(record)
+            best_score = 0.0
+            best_record: Optional[Dict[str, object]] = None
+
+            for candidate_id in candidate_ids:
+                candidate = self._records.get(candidate_id)
+                if not candidate:
+                    continue
+                if candidate.get("src_path") == record.get("src_path"):
+                    continue
+                score = self._calculate_similarity(record, candidate)
+                if score > best_score:
+                    best_score = score
+                    best_record = candidate
+            return best_score, best_record
 
     def add_record(self, record: Dict[str, object]) -> int:
-        """Persist *record* in the index and return its identifier."""
-        record = dict(record)
-        record_id = self._next_id
-        self._next_id += 1
-        record["_id"] = record_id
-        self._records[record_id] = record
+        """Persist *record* in the index and return its identifier.
 
-        partial_hash = record.get("partial_hash")
-        if isinstance(partial_hash, str):
-            self._by_partial_hash[partial_hash].add(record_id)
+        Thread-safe: acquires the internal lock while mutating the index.
+        """
+        with self._lock:
+            record = dict(record)
+            record_id = self._next_id
+            self._next_id += 1
+            record["_id"] = record_id
+            self._records[record_id] = record
 
-        size = record.get("size")
-        if isinstance(size, int):
-            self._by_size_exact[size].add(record_id)
-            bucket = size // self._size_bucket_bytes
-            for neighbor in (bucket - 1, bucket, bucket + 1):
-                self._by_size_bucket[neighbor].add(record_id)
+            partial_hash = record.get("partial_hash")
+            if isinstance(partial_hash, str):
+                self._by_partial_hash[partial_hash].add(record_id)
 
-        resolution = record.get("resolution")
-        if isinstance(resolution, int) and resolution > 0:
-            self._by_resolution[resolution].add(record_id)
+            size = record.get("size")
+            if isinstance(size, int):
+                self._by_size_exact[size].add(record_id)
+                bucket = size // self._size_bucket_bytes
+                for neighbor in (bucket - 1, bucket, bucket + 1):
+                    self._by_size_bucket[neighbor].add(record_id)
 
-        normalized_name = record.get("normalized_name")
-        if isinstance(normalized_name, str) and normalized_name:
-            self._by_name[normalized_name].add(record_id)
+            resolution = record.get("resolution")
+            if isinstance(resolution, int) and resolution > 0:
+                self._by_resolution[resolution].add(record_id)
 
-        return record_id
+            normalized_name = record.get("normalized_name")
+            if isinstance(normalized_name, str) and normalized_name:
+                self._by_name[normalized_name].add(record_id)
+
+            return record_id
 
     def seed_from_directory(
         self,
