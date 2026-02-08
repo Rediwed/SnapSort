@@ -1,10 +1,20 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 
 export default function Layout() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <div className="app-layout">
-      <Sidebar />
+      <button
+        className="mobile-menu-btn"
+        onClick={() => setMenuOpen(true)}
+        aria-label="Open menu"
+      >
+        <span /><span /><span />
+      </button>
+      <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
       <main className="main-content">
         <Outlet />
       </main>

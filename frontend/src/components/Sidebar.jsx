@@ -9,27 +9,33 @@ const links = [
   { to: '/settings',   icon: '⚙', label: 'Settings' },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }) {
   return (
-    <aside className="sidebar">
-      <div className="sidebar-logo">
-        <div className="logo-icon">S</div>
-        <h1>SnapSort</h1>
-        <span className="version">v1.0</span>
-      </div>
+    <>
+      {/* Overlay — visible only on mobile when menu is open */}
+      {open && <div className="sidebar-overlay" onClick={onClose} />}
 
-      <nav className="sidebar-nav">
-        {links.map((l) => (
-          <NavLink
-            key={l.to}
-            to={l.to}
-            className={({ isActive }) => (isActive ? 'active' : '')}
-          >
-            <span className="nav-icon">{l.icon}</span>
-            {l.label}
-          </NavLink>
-        ))}
-      </nav>
-    </aside>
+      <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
+        <div className="sidebar-logo">
+          <div className="logo-icon">S</div>
+          <h1>SnapSort</h1>
+          <span className="version">v1.0</span>
+        </div>
+
+        <nav className="sidebar-nav">
+          {links.map((l) => (
+            <NavLink
+              key={l.to}
+              to={l.to}
+              className={({ isActive }) => (isActive ? 'active' : '')}
+              onClick={onClose}
+            >
+              <span className="nav-icon">{l.icon}</span>
+              {l.label}
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+    </>
   );
 }
