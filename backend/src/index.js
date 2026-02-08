@@ -57,8 +57,21 @@ app.get('/api/health', (_req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Static frontend (production)                                       */
+/* ------------------------------------------------------------------ */
+const publicDir = path.join(__dirname, '..', 'public');
+const fs = require('fs');
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir));
+  /* SPA fallback — send index.html for any non-API route */
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /*  Start                                                              */
 /* ------------------------------------------------------------------ */
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`SnapSort API listening on http://0.0.0.0:${PORT}`);
+  console.log(`SnapSort listening on http://0.0.0.0:${PORT}`);
 });

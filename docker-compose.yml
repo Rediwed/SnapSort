@@ -1,36 +1,18 @@
 version: "3.9"
 
 services:
-  # ---- Backend: Express + SQLite + Python engine ----
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: snapsort-backend
+  snapsort:
+    build: .
+    container_name: snapsort
     ports:
-      - "4000:4000"
+      - "8080:4000"
     volumes:
-      - db-data:/app/backend/data        # persist SQLite database
-      - photos-source:/mnt/photos/source  # mount your source photos here
-      - photos-dest:/mnt/photos/dest      # organized output goes here
+      - db-data:/app/backend/data         # persist SQLite database
+      - /mnt/user/photos:/mnt/photos      # adjust to your photo share
     environment:
       - NODE_ENV=production
       - PORT=4000
     restart: unless-stopped
 
-  # ---- Frontend: React SPA served by nginx ----
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    container_name: snapsort-frontend
-    ports:
-      - "8080:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
-
 volumes:
   db-data:
-  photos-source:
-  photos-dest:

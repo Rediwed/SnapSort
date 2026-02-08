@@ -1,0 +1,88 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>SnapSort</Name>
+  <Repository>snapsort:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>https://github.com/YOUR_USERNAME/SnapSort</Project>
+  <Overview>
+    SnapSort automatically organizes your photos by EXIF date into
+    Year/Month folders, detects duplicates via fast hashing, and filters
+    out low-quality images. Dark-themed web UI for managing jobs,
+    browsing results, and running storage benchmarks.
+  </Overview>
+  <Category>MediaApp:Photos</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/YOUR_USERNAME/SnapSort/main/frontend/public/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <!-- Web UI port -->
+  <Config
+    Name="WebUI Port"
+    Target="4000"
+    Default="8080"
+    Mode="tcp"
+    Description="Port for the SnapSort web interface"
+    Type="Port"
+    Display="always"
+    Required="true"
+    Mask="false">8080</Config>
+
+  <!-- Photos directory — point this at your photo share -->
+  <Config
+    Name="Photos"
+    Target="/mnt/photos"
+    Default="/mnt/user/photos"
+    Mode="rw"
+    Description="Path to your photos share (contains source and dest sub-folders)"
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/photos</Config>
+
+  <!-- SQLite database persistence -->
+  <Config
+    Name="App Data"
+    Target="/app/backend/data"
+    Default="/mnt/user/appdata/snapsort"
+    Mode="rw"
+    Description="Path to store the SnapSort database and config"
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/appdata/snapsort</Config>
+
+  <!-- Environment -->
+  <Config
+    Name="NODE_ENV"
+    Target="NODE_ENV"
+    Default="production"
+    Mode=""
+    Description="Node environment (leave as production)"
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">production</Config>
+
+  <Config
+    Name="PORT"
+    Target="PORT"
+    Default="4000"
+    Mode=""
+    Description="Internal port (should match Target of WebUI Port above)"
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">4000</Config>
+</Container>
