@@ -11,7 +11,7 @@ import csv
 import gc
 import mmap
 from datetime import datetime
-from photo_utils import copy_photo_with_metadata
+from photo_utils import copy_photo_with_metadata, extract_date_taken
 from logging_utils import log_message, log_csv, ensure_csv_config
 from path_utils import construct_dest_path
 from dedup_utils import DeduplicationIndex
@@ -418,6 +418,183 @@ def file_hash_fast(filepath, max_bytes=8192):
     except Exception:
         return None
 
+def json_mode():
+    """Run the organizer in JSON-line mode (called by the Node.js backend).
+
+    Reads a JSON config object from stdin:
+      { "source_dir", "dest_dir", "min_width", "min_height", "min_filesize", "job_id" }
+
+    Emits newline-delimited JSON events to stdout:
+      { "event": "progress", ... }
+      { "event": "photo", ... }
+      { "event": "duplicate", ... }
+      { "event": "done", "summary": { ... } }
+      { "event": "error", "message": "..." }
+    """
+    import json as _json
+
+    def emit(obj):
+        print(_json.dumps(obj, default=str), flush=True)
+
+    try:
+        raw = sys.stdin.read()
+        cfg = _json.loads(raw)
+    except Exception as e:
+        emit({"event": "error", "message": f"Failed to parse config from stdin: {e}"})
+        sys.exit(1)
+
+    global SOURCE_DIR, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE, ENABLE_CSV_LOG
+    SOURCE_DIR = cfg.get("source_dir", "")
+    DEST_DIR = cfg.get("dest_dir", "")
+    MIN_WIDTH = int(cfg.get("min_width", 600))
+    MIN_HEIGHT = int(cfg.get("min_height", 600))
+    MIN_FILESIZE = int(cfg.get("min_filesize", 51200))
+    ENABLE_CSV_LOG = None  # skip prompt
+
+    if not SOURCE_DIR or not os.path.isdir(SOURCE_DIR):
+        emit({"event": "error", "message": f"Source directory does not exist: {SOURCE_DIR}"})
+        sys.exit(1)
+
+    try:
+        os.makedirs(DEST_DIR, exist_ok=True)
+    except Exception as e:
+        emit({"event": "error", "message": f"Cannot create destination: {DEST_DIR} ({e})"})
+        sys.exit(1)
+
+    dedup_index = DeduplicationIndex(
+        strict_threshold=DEDUP_STRICT_THRESHOLD,
+        log_threshold=DEDUP_LOG_THRESHOLD,
+        partial_hash_bytes=DEDUP_PARTIAL_HASH_BYTES,
+    )
+
+    seeded = dedup_index.seed_from_directory(DEST_DIR, SUPPORTED_EXTENSIONS, log_message)
+    if seeded:
+        emit({"event": "progress", "message": f"Seeded dedup index with {seeded} existing files"})
+
+    # Count total files first for progress reporting
+    total_files = 0
+    for root, _dirs, files in os.walk(SOURCE_DIR):
+        for f in files:
+            if f.lower().endswith(SUPPORTED_EXTENSIONS):
+                total_files += 1
+
+    emit({"event": "progress", "processed": 0, "copied": 0, "skipped": 0, "errors": 0, "total_files": total_files})
+
+    processed = 0
+    copied = 0
+    skipped = 0
+    errs = 0
+    total_bytes = 0
+    hash_func = file_hash_fast if ENABLE_FAST_HASH else file_hash
+
+    for root, _dirs, files in os.walk(SOURCE_DIR):
+        for file in files:
+            if not file.lower().endswith(SUPPORTED_EXTENSIONS):
+                continue
+            src_path = os.path.join(root, file)
+            dest_path = None
+            skip_reason = None
+            status = None
+            width = None
+            height = None
+            date_taken_str = None
+            file_size = 0
+            file_hash_val = None
+
+            # Capture log messages during processing to extract skip reasons
+            _captured_logs = []
+            def _capture_log(msg):
+                _captured_logs.append(msg)
+
+            try:
+                file_size = os.path.getsize(src_path)
+                result, dest_path = copy_photo_with_metadata(
+                    src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
+                    SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, False,
+                    hash_func, log_csv, _capture_log,
+                    dedup_index=dedup_index
+                )
+                status = result
+                if result == "copied":
+                    copied += 1
+                    if dest_path:
+                        total_bytes += os.path.getsize(dest_path)
+                elif result == "skipped":
+                    skipped += 1
+                    # Extract skip reason from captured log messages
+                    for msg in _captured_logs:
+                        if "Skipped" in msg:
+                            # Parse "Skipped (reason): path" -> "reason"
+                            start = msg.find("(")
+                            end = msg.find(")")
+                            if start != -1 and end != -1:
+                                skip_reason = msg[start + 1:end]
+                            break
+                else:
+                    errs += 1
+                    for msg in _captured_logs:
+                        if "Error" in msg:
+                            skip_reason = msg
+                            break
+            except Exception as e:
+                status = "error"
+                skip_reason = str(e)
+                errs += 1
+
+            processed += 1
+
+            # Try to get image dimensions
+            try:
+                from PIL import Image as _Img
+                with _Img.open(src_path) as _im:
+                    width, height = _im.size
+            except Exception:
+                pass
+
+            # Try to get date taken
+            try:
+                dt = extract_date_taken(src_path)
+                if dt:
+                    date_taken_str = dt.isoformat()
+            except Exception:
+                pass
+
+            emit({
+                "event": "photo",
+                "src_path": src_path,
+                "dest_path": dest_path,
+                "filename": file,
+                "status": status,
+                "file_size": file_size,
+                "width": width,
+                "height": height,
+                "date_taken": date_taken_str,
+                "skip_reason": skip_reason,
+            })
+
+            # Emit progress every file
+            emit({
+                "event": "progress",
+                "processed": processed,
+                "copied": copied,
+                "skipped": skipped,
+                "errors": errs,
+                "total_files": total_files,
+            })
+
+    emit({
+        "event": "done",
+        "summary": {
+            "total_files": total_files,
+            "processed": processed,
+            "copied": copied,
+            "skipped": skipped,
+            "errors": errs,
+            "total_bytes": total_bytes,
+        },
+    })
+
+
 if __name__ == "__main__":
     # Dependency check: provide a clear message if required packages are missing
     missing_deps = []
@@ -434,7 +611,12 @@ if __name__ == "__main__":
         print("Missing required Python packages: " + ", ".join(missing_deps))
         print("Install them with: python3 -m pip install -r requirements.txt")
         sys.exit(1)
-    
+
+    # JSON mode — used by the Node.js backend
+    if "--json-config" in sys.argv:
+        json_mode()
+        sys.exit(0)
+
     # Check if test mode is available
     test_available = check_test_folders()
     

@@ -21,6 +21,33 @@ router.get('/', (req, res) => {
   res.json(jobs);
 });
 
+/* Test presets — return available test datasets */
+router.get('/test-presets', (_req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const manifestPath = path.join(__dirname, '..', '..', '..', 'test_data', 'manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    return res.json({ available: false, message: 'No test data found. Run: python3 generate_test_data.py' });
+  }
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const baseDir = manifest.base_dir;
+    const presets = manifest.sources.map((src) => ({
+      name: src,
+      sourceDir: path.join(baseDir, src),
+      destDir: path.join(baseDir, manifest.destination),
+    }));
+    res.json({
+      available: true,
+      baseDir,
+      presets,
+      edgeCases: manifest.edge_cases || [],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* Get single job */
 router.get('/:id', (req, res) => {
   const job = getJob(req.db, req.params.id);

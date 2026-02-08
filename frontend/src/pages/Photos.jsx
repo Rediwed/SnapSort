@@ -13,6 +13,15 @@ const tabs = [
   { value: 'error', label: 'Errors' },
 ];
 
+const tabLabels = { '': 'all', copied: 'copied', skipped: 'skipped', error: 'error' };
+
+const fmtDate = (d) => {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
 const columns = [
   { key: 'filename', header: 'Filename', className: 'truncate' },
   { key: 'extension', header: 'Ext', className: 'mono' },
@@ -20,7 +29,7 @@ const columns = [
   { key: 'skip_reason', header: 'Reason', className: 'truncate', render: (r) => r.skip_reason || '—' },
   { key: 'file_size', header: 'Size', className: 'mono', render: (r) => r.file_size ? `${(r.file_size / 1024).toFixed(0)} KB` : '—' },
   { key: 'width', header: 'W×H', className: 'mono', render: (r) => r.width ? `${r.width}×${r.height}` : '—' },
-  { key: 'date_taken', header: 'Date', render: (r) => r.date_taken ? new Date(r.date_taken).toLocaleDateString() : '—' },
+  { key: 'date_taken', header: 'Date Taken', render: (r) => fmtDate(r.date_taken) },
 ];
 
 export default function Photos() {
@@ -34,11 +43,16 @@ export default function Photos() {
     fetchPhotos(params).then((d) => { setPhotos(d.photos); setTotal(d.total); }).catch(console.error);
   }, [status]);
 
+  const label = tabLabels[status] || 'all';
+  const summaryText = status
+    ? `${total.toLocaleString()} ${label} photo${total !== 1 ? 's' : ''}`
+    : `${total.toLocaleString()} photo${total !== 1 ? 's' : ''} processed across all jobs`;
+
   return (
     <>
       <div className="page-header">
         <h2>Photos</h2>
-        <p>{total.toLocaleString()} photos processed across all jobs</p>
+        <p>{summaryText}</p>
       </div>
       <div className="page-body">
         <PillTabs tabs={tabs} active={status} onChange={setStatus} />

@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Badge from '../components/Badge';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import FilePicker from '../components/FilePicker';
-import { fetchJobs, createJob, startJob, cancelJob, deleteJob } from '../api';
+import { fetchJobs, createJob, startJob, cancelJob, deleteJob, fetchTestPresets } from '../api';
 
 const statusVariant = { pending: 'orange', running: 'accent', done: 'green', error: 'red' };
 
@@ -11,10 +11,20 @@ export default function Jobs() {
   const [jobs, setJobs] = useState([]);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200 });
-  const [picker, setPicker] = useState({ open: false, field: null }); // { open, field: 'sourceDir' | 'destDir' }
+  const [picker, setPicker] = useState({ open: false, field: null });
+  const [loadingTest, setLoadingTest] = useState(false);
 
-  const load = () => fetchJobs().then(setJobs).catch(console.error);
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => fetchJobs().then(setJobs).catch(console.error), []);
+  useEffect(() => { load(); }, [load]);
+
+  /* Live-poll every 500ms while any job is running */
+  useEffect(() => {
+    const hasRunning = jobs.some((j) => j.status === 'running');
+    if (hasRunning) {
+      const id = setInterval(load, 500);
+      return () => clearInterval(id);
+    }
+  }, [jobs, load]);
 
   const handleCreate = async () => {
     await createJob(form);
@@ -23,13 +33,64 @@ export default function Jobs() {
     load();
   };
 
+  /* Load Test Data — fetch presets, create one job per source, start them all */
+  const handleLoadTest = async () => {
+    setLoadingTest(true);
+    try {
+      const data = await fetchTestPresets();
+      if (!data.available) {
+        alert(data.message || 'No test data available');
+        return;
+      }
+      const created = [];
+      for (const preset of data.presets) {
+        const job = await createJob({
+          sourceDir: preset.sourceDir,
+          destDir: preset.destDir,
+          mode: 'normal',
+          minWidth: 600,
+          minHeight: 600,
+          minFilesize: 51200,
+        });
+        created.push(job);
+      }
+      /* Start all created jobs */
+      for (const job of created) {
+        await startJob(job.id);
+      }
+      /* Immediately fetch so polling kicks in while jobs are running */
+      await load();
+    } catch (err) {
+      console.error('Failed to load test data:', err);
+      alert('Error loading test presets: ' + err.message);
+    } finally {
+      setLoadingTest(false);
+    }
+  };
+
+  const pctBar = (r) => {
+    if (!r.total_files || r.total_files === 0) return null;
+    const pct = Math.round((r.processed / r.total_files) * 100);
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
+        <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--surface-2)' }}>
+          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: r.status === 'done' ? 'var(--green)' : 'var(--accent)', transition: 'width .3s' }} />
+        </div>
+        <span className="mono" style={{ fontSize: 12 }}>{pct}%</span>
+      </div>
+    );
+  };
+
   const columns = [
     { key: 'id', header: 'ID', className: 'mono truncate', render: (r) => r.id.slice(0, 8) },
-    { key: 'source_dir', header: 'Source', className: 'truncate' },
-    { key: 'dest_dir', header: 'Destination', className: 'truncate' },
+    { key: 'source_dir', header: 'Source', className: 'truncate', render: (r) => r.source_dir.split('/').pop() },
+    { key: 'dest_dir', header: 'Destination', className: 'truncate', render: (r) => r.dest_dir.split('/').pop() },
     { key: 'mode', header: 'Mode', render: (r) => <Badge variant="cyan">{r.mode}</Badge> },
     { key: 'status', header: 'Status', render: (r) => <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge> },
-    { key: 'processed', header: 'Progress', className: 'mono', render: (r) => `${r.processed}/${r.total_files || '?'}` },
+    {
+      key: 'progress', header: 'Progress', className: 'mono', render: (r) =>
+        r.status === 'running' ? pctBar(r) : `${r.processed}/${r.total_files || '?'}`,
+    },
     {
       key: 'actions', header: 'Actions', render: (r) => (
         <div className="flex gap-8">
@@ -48,7 +109,16 @@ export default function Jobs() {
           <h2>Jobs</h2>
           <p>Manage photo organization runs</p>
         </div>
-        <button className="btn primary" onClick={() => setShowNew(true)}>+ New Job</button>
+        <div className="flex gap-8">
+          <button
+            className="btn"
+            onClick={handleLoadTest}
+            disabled={loadingTest}
+          >
+            {loadingTest ? 'Loading…' : '🧪 Load Test Data'}
+          </button>
+          <button className="btn primary" onClick={() => setShowNew(true)}>+ New Job</button>
+        </div>
       </div>
 
       <div className="page-body">
