@@ -154,50 +154,55 @@ print(json.dumps({"event": "phase", "phase": "copy", "time": round(copy_time, 4)
 # --- Phase 5: Hash performance on source files ---
 sys.path.insert(0, ${JSON.stringify(engineDir)})
 from photo_organizer import file_hash, file_hash_fast
-import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
+import os as _os
 
-cpu_count = multiprocessing.cpu_count()
+cpu_count = _os.cpu_count() or 4
 
-# 5a: Single-thread hash (baseline)
+# 5a: Single-thread full hash (reads entire file — comparable to I/O throughput)
 t_hash_std = time.time()
 for fp in test_files:
     file_hash(fp)
 standard_hash_time = time.time() - t_hash_std
 
+# 5b: Single-thread fast hash (reads only first N KB)
 t_hash_fast = time.time()
 for fp in test_files:
     file_hash_fast(fp)
 fast_hash_time = time.time() - t_hash_fast
 
 hash_speedup = standard_hash_time / fast_hash_time if fast_hash_time > 0 else 1.0
-print(json.dumps({"event": "phase", "phase": "hash_single", "standard_time": round(standard_hash_time, 4), "fast_time": round(fast_hash_time, 4), "speedup": round(hash_speedup, 2)}), flush=True)
+print(json.dumps({"event": "phase", "phase": "hash_single", "full_time": round(standard_hash_time, 4), "fast_time": round(fast_hash_time, 4), "speedup": round(hash_speedup, 2)}), flush=True)
 
-# 5b: Parallel hash (realistic — matches what the engine does with workers)
+# 5c: Parallel full hash using ThreadPoolExecutor
+# ThreadPoolExecutor has near-zero spawn overhead (vs multiprocessing which forks
+# new Python interpreters). The GIL is released during file I/O reads and hashlib
+# C operations, so threads scale well for hashing workloads.
 worker_count = min(cpu_count, max(len(test_files), 1))
 t_parallel = time.time()
 try:
-    with multiprocessing.Pool(processes=worker_count) as pool:
-        pool.map(file_hash_fast, test_files)
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        list(pool.map(file_hash, test_files))
     parallel_hash_time = time.time() - t_parallel
 except Exception:
-    # Fallback if multiprocessing fails (e.g. spawn issues)
-    parallel_hash_time = fast_hash_time
+    parallel_hash_time = standard_hash_time
 
-parallel_speedup = fast_hash_time / parallel_hash_time if parallel_hash_time > 0 else 1.0
+parallel_speedup = standard_hash_time / parallel_hash_time if parallel_hash_time > 0 else 1.0
 print(json.dumps({"event": "phase", "phase": "hash_parallel", "time": round(parallel_hash_time, 4), "workers": worker_count, "speedup_vs_single": round(parallel_speedup, 2)}), flush=True)
 
 # --- Compute throughput metrics ---
 total_mb = total_bytes / (1024 * 1024)
-source_read_mbps  = total_mb / source_read_time   if source_read_time   > 0 else 0
-source_write_mbps = total_mb / source_write_time   if source_write_time  > 0 else 0
-dest_write_mbps   = total_mb / dest_write_time     if dest_write_time    > 0 else 0
-copy_mbps         = total_mb / copy_time           if copy_time          > 0 else 0
-hash_single_mbps  = total_mb / fast_hash_time      if fast_hash_time     > 0 else 0
-hash_parallel_mbps= total_mb / parallel_hash_time  if parallel_hash_time > 0 else 0
+source_read_mbps  = total_mb / source_read_time     if source_read_time   > 0 else 0
+source_write_mbps = total_mb / source_write_time     if source_write_time  > 0 else 0
+dest_write_mbps   = total_mb / dest_write_time       if dest_write_time    > 0 else 0
+copy_mbps         = total_mb / copy_time             if copy_time          > 0 else 0
+# Full-file hash throughput — apples-to-apples with I/O (both process all bytes)
+hash_single_mbps  = total_mb / standard_hash_time    if standard_hash_time > 0 else 0
+hash_parallel_mbps= total_mb / parallel_hash_time    if parallel_hash_time > 0 else 0
 
 # --- Bottleneck analysis ---
 # The engine uses parallel hashing, so use parallel throughput for comparison.
-# During a real job: files are read from source, hashed (in parallel), then written to dest.
+# All three metrics are total_bytes / time, making them directly comparable.
 metrics = {
     "source":      source_read_mbps,
     "destination": dest_write_mbps,
