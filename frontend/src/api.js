@@ -47,12 +47,7 @@ export const photoPreviewUrl = (id) => `${BASE}/photos/${id}/preview`;
 export const overridePhotos = (jobId, photoIds) =>
   request(`/jobs/${jobId}/override`, { method: 'POST', body: JSON.stringify({ photoIds }) });
 
-/* ---- Duplicates ---- */
-export const fetchDuplicates = (params = {}) => {
-  const q = new URLSearchParams(params).toString();
-  return request(`/duplicates${q ? '?' + q : ''}`);
-};
-export const fetchDuplicateJobs = () => request('/duplicates/jobs');
+/* ---- Duplicates (resolution only — listing is via /api/photos?isDuplicate=true) ---- */
 export const resolveDuplicate = (id, resolution) =>
   request(`/duplicates/${id}`, { method: 'PATCH', body: JSON.stringify({ resolution }) });
 

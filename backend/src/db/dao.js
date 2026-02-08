@@ -70,33 +70,57 @@ function listPhotoPaths(db, jobId) {
 function insertPhoto(db, photo) {
   const id = photo.id || uuidv4();
   db.prepare(`
-    INSERT INTO photos (id, job_id, src_path, dest_path, filename, extension, file_size, width, height, date_taken, status, skip_reason, hash, processed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO photos (id, job_id, src_path, dest_path, filename, extension, file_size, width, height, date_taken, status, skip_reason, hash, dpi, processed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, photo.jobId, photo.srcPath, photo.destPath || null,
     photo.filename, photo.extension, photo.fileSize || 0,
     photo.width || null, photo.height || null, photo.dateTaken || null,
     photo.status || 'pending', photo.skipReason || null, photo.hash || null,
+    photo.dpi || null,
     new Date().toISOString()
   );
   return id;
 }
 
-function listPhotos(db, { jobId, status, limit = 100, offset = 0 } = {}) {
-  let sql = 'SELECT * FROM photos WHERE 1=1';
+function listPhotos(db, { jobId, status, isDuplicate, resolution, limit = 100, offset = 0 } = {}) {
+  let sql = `SELECT p.*,
+      d.id AS dup_id, d.similarity, d.matched_path AS dup_matched_path,
+      d.matched_photo_id, d.resolution AS dup_resolution, d.src_path AS dup_src_path
+    FROM photos p
+    LEFT JOIN duplicates d ON d.photo_id = p.id
+    WHERE 1=1`;
   const params = [];
-  if (jobId) { sql += ' AND job_id = ?'; params.push(jobId); }
-  if (status) { sql += ' AND status = ?'; params.push(status); }
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  if (jobId) { sql += ' AND p.job_id = ?'; params.push(jobId); }
+  if (isDuplicate === 'true') {
+    sql += ' AND d.id IS NOT NULL';
+    if (resolution) { sql += ' AND COALESCE(d.resolution, \'undecided\') = ?'; params.push(resolution); }
+  } else if (status) {
+    sql += ' AND p.status = ?'; params.push(status);
+    if (status === 'skipped') {
+      sql += ' AND d.id IS NULL'; // exclude duplicates from skipped
+    }
+  }
+  sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
   return db.prepare(sql).all(...params);
 }
 
-function countPhotos(db, { jobId, status } = {}) {
-  let sql = 'SELECT COUNT(*) AS count FROM photos WHERE 1=1';
+function countPhotos(db, { jobId, status, isDuplicate, resolution } = {}) {
+  let sql = `SELECT COUNT(*) AS count FROM photos p
+    LEFT JOIN duplicates d ON d.photo_id = p.id
+    WHERE 1=1`;
   const params = [];
-  if (jobId) { sql += ' AND job_id = ?'; params.push(jobId); }
-  if (status) { sql += ' AND status = ?'; params.push(status); }
+  if (jobId) { sql += ' AND p.job_id = ?'; params.push(jobId); }
+  if (isDuplicate === 'true') {
+    sql += ' AND d.id IS NOT NULL';
+    if (resolution) { sql += ' AND COALESCE(d.resolution, \'undecided\') = ?'; params.push(resolution); }
+  } else if (status) {
+    sql += ' AND p.status = ?'; params.push(status);
+    if (status === 'skipped') {
+      sql += ' AND d.id IS NULL';
+    }
+  }
   return db.prepare(sql).get(...params).count;
 }
 

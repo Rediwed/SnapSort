@@ -446,6 +446,7 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
         "file_size": 0,
         "width": None,
         "height": None,
+        "dpi": None,
         "date_taken": None,
         "skip_reason": None,
         "bytes_copied": 0,
@@ -520,11 +521,15 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
         result["status"] = "error"
         result["skip_reason"] = str(exc)
 
-    # Image dimensions
+    # Image dimensions and DPI
     try:
         from PIL import Image as _Img
         with _Img.open(src_path) as im:
             result["width"], result["height"] = im.size
+            info = im.info or {}
+            dpi_val = info.get("dpi")
+            if dpi_val and isinstance(dpi_val, (tuple, list)) and len(dpi_val) >= 1:
+                result["dpi"] = int(round(dpi_val[0]))
     except Exception:
         pass
 
@@ -692,6 +697,7 @@ def json_mode():
                 "file_size": r["file_size"],
                 "width": r["width"],
                 "height": r["height"],
+                "dpi": r["dpi"],
                 "date_taken": r["date_taken"],
                 "skip_reason": r["skip_reason"],
             })

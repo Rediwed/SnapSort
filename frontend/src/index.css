@@ -684,6 +684,13 @@ td.truncate {
   margin-bottom: 0;
 }
 
+/* Sub-filter row (e.g. resolution tabs under Duplicates pill) */
+.photos-filter-bar.sub-filter {
+  justify-content: flex-start;
+  margin-top: -4px;
+  padding-bottom: 0;
+}
+
 /* Override bar */
 .override-bar {
   display: flex;
@@ -782,6 +789,11 @@ td .badge.cyan {
   display: flex;
   gap: 6px;
   flex-wrap: nowrap;
+}
+.dup-bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 /* Profile summary tags (job creation modal) */

@@ -11,14 +11,16 @@ const router = Router();
 
 /* List photos with optional filters */
 router.get('/', (req, res) => {
-  const { jobId, status, limit, offset } = req.query;
+  const { jobId, status, isDuplicate, resolution, limit, offset } = req.query;
   const photos = listPhotos(req.db, {
     jobId,
     status,
+    isDuplicate,
+    resolution,
     limit: limit ? Number(limit) : 100,
     offset: offset ? Number(offset) : 0,
   });
-  const total = countPhotos(req.db, { jobId, status });
+  const total = countPhotos(req.db, { jobId, status, isDuplicate, resolution });
   res.json({ photos, total });
 });
 

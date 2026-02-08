@@ -4,7 +4,6 @@ const links = [
   { to: '/dashboard',  icon: '◉', label: 'Dashboard' },
   { to: '/jobs',       icon: '▶', label: 'Jobs' },
   { to: '/photos',     icon: '▣', label: 'Photos' },
-  { to: '/duplicates', icon: '⊜', label: 'Duplicates' },
   { to: '/benchmarks', icon: '⏱', label: 'Benchmarks' },
   { to: '/settings',   icon: '⚙', label: 'Settings' },
 ];

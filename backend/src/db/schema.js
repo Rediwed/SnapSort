@@ -72,6 +72,7 @@ function initDb(dbPath) {
       status        TEXT NOT NULL DEFAULT 'pending',  -- pending | copied | skipped | error
       skip_reason   TEXT,
       hash          TEXT,
+      dpi           INTEGER,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       processed_at  TEXT,
       overridden_at TEXT
@@ -90,6 +91,9 @@ function initDb(dbPath) {
     if (!photoCols.includes('overridden_at')) {
       db.exec('ALTER TABLE photos ADD COLUMN overridden_at TEXT');
     }
+    if (!photoCols.includes('dpi')) {
+      db.exec('ALTER TABLE photos ADD COLUMN dpi INTEGER');
+    }
   } catch { /* table doesn't exist yet — CREATE above handled it */ }
 
   /* ---- duplicates ---- */
@@ -105,7 +109,8 @@ function initDb(dbPath) {
       resolution    TEXT,           -- keep | delete | undecided
       created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE INDEX IF NOT EXISTS idx_dup_job ON duplicates(job_id);
+    CREATE INDEX IF NOT EXISTS idx_dup_job   ON duplicates(job_id);
+    CREATE INDEX IF NOT EXISTS idx_dup_photo ON duplicates(photo_id);
   `);
 
   /* ---- settings ---- */

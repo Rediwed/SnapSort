@@ -21,6 +21,8 @@ const { v4: uuidv4 } = require('uuid');
 
 /* Map of jobId → child process so we can cancel */
 const activeProcesses = new Map();
+/* Map of jobId → Map(src_path → photoId) so duplicate events can reference the correct photo */
+const photoIdMaps = new Map();
 
 /**
  * Start a job by spawning the Python organizer.
@@ -70,6 +72,7 @@ function startJob(db, job) {
   });
 
   activeProcesses.set(job.id, child);
+  photoIdMaps.set(job.id, new Map());
 
   /* Feed config via stdin */
   child.stdin.write(config);
@@ -98,6 +101,7 @@ function startJob(db, job) {
 
   child.on('close', (code) => {
     activeProcesses.delete(job.id);
+    photoIdMaps.delete(job.id);
     const status = code === 0 ? 'done' : 'error';
     updateJobStatus(db, job.id, status, {
       finished_at: new Date().toISOString(),
@@ -114,6 +118,7 @@ function cancelJob(jobId) {
   if (child) {
     child.kill('SIGTERM');
     activeProcesses.delete(jobId);
+    photoIdMaps.delete(jobId);
   }
 }
 
@@ -132,9 +137,10 @@ function handleEvent(db, jobId, evt) {
       });
       break;
 
-    case 'photo':
+    case 'photo': {
+      const photoId = uuidv4();
       insertPhoto(db, {
-        id: uuidv4(),
+        id: photoId,
         jobId,
         srcPath: evt.src_path,
         destPath: evt.dest_path || null,
@@ -147,20 +153,44 @@ function handleEvent(db, jobId, evt) {
         status: evt.status,
         skipReason: evt.skip_reason || null,
         hash: evt.hash || null,
+        dpi: evt.dpi || null,
       });
+      /* Remember the photo ID so the subsequent duplicate event can reference it */
+      const idMap = photoIdMaps.get(jobId);
+      if (idMap) idMap.set(evt.src_path, photoId);
       break;
+    }
 
-    case 'duplicate':
-      insertDuplicate(db, {
-        id: uuidv4(),
-        jobId,
-        photoId: evt.photo_id || uuidv4(),
-        matchedPhotoId: evt.matched_photo_id || null,
-        srcPath: evt.src_path,
-        matchedPath: evt.matched_path || null,
-        similarity: evt.similarity || 0,
-      });
+    case 'duplicate': {
+      /* Look up the photo row we just inserted for this src_path */
+      const map = photoIdMaps.get(jobId);
+      const photoId = (map && map.get(evt.src_path)) || null;
+      if (!photoId) {
+        console.warn(`[job ${jobId}] duplicate event for unknown photo: ${evt.src_path}`);
+        break;
+      }
+      /* Try to find matched_photo_id by querying photos with the matched_path */
+      let matchedPhotoId = null;
+      if (evt.matched_path) {
+        const row = db.prepare('SELECT id FROM photos WHERE job_id = ? AND (dest_path = ? OR src_path = ?) LIMIT 1')
+          .get(jobId, evt.matched_path, evt.matched_path);
+        if (row) matchedPhotoId = row.id;
+      }
+      try {
+        insertDuplicate(db, {
+          id: uuidv4(),
+          jobId,
+          photoId,
+          matchedPhotoId,
+          srcPath: evt.src_path,
+          matchedPath: evt.matched_path || null,
+          similarity: evt.similarity || 0,
+        });
+      } catch (err) {
+        console.error(`[job ${jobId}] failed to insert duplicate: ${err.message}`);
+      }
       break;
+    }
 
     case 'done':
       updateJobStatus(db, jobId, 'done', {
