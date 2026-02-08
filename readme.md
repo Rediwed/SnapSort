@@ -101,7 +101,6 @@ SnapSort/
 ├── photo_organizer.py        # Python engine (CLI + JSON mode)
 ├── photo_utils.py             # Image processing, EXIF, copy logic
 ├── dedup_utils.py             # Deduplication index & matching
-├── fast_hash.py               # Optimized partial-file hashing
 ├── path_utils.py              # Destination path construction
 ├── logging_utils.py           # CSV/log utilities
 ├── backend/                   # Node.js Express API

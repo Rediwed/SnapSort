@@ -42,10 +42,7 @@ function detectMacDrives() {
   const drives = [];
 
   try {
-    /* diskutil list -plist gives structured output but JSON is easier to parse */
-    const raw = execSync('diskutil info -all 2>/dev/null || true', { encoding: 'utf-8', timeout: 10000 });
-
-    /* Simpler approach: just scan /Volumes and diskutil info each */
+    /* Scan /Volumes and diskutil info each */
     const volumes = fs.readdirSync('/Volumes');
 
     for (const vol of volumes) {

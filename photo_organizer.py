@@ -9,7 +9,6 @@ import sys
 import time
 import csv
 import gc
-import mmap
 from datetime import datetime
 from photo_utils import copy_photo_with_metadata, extract_date_taken
 from logging_utils import log_message, log_csv, ensure_csv_config
@@ -337,37 +336,6 @@ def resume_copy_from_csv():
                 continue
             processed.add(row['src_path'])
     scan_and_organize_photos(processed_set=processed)
-
-def test_mode():
-    """Run the photo organizer in test mode using test data folders."""
-    global SOURCE_DIR, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE, ENABLE_CSV_LOG
-    
-    test_source = os.path.join(os.path.dirname(__file__), "test_data", "source_photos")
-    test_dest = os.path.join(os.path.dirname(__file__), "test_data", "dest_photos")
-    
-    # Force use of test directories and sensible defaults
-    SOURCE_DIR = test_source
-    DEST_DIR = test_dest
-    MIN_WIDTH = 600
-    MIN_HEIGHT = 600
-    MIN_FILESIZE = 51200
-    ENABLE_CSV_LOG = True  # Enable CSV logging in test mode
-    
-    print(f"Test mode activated:")
-    print(f"Source: {SOURCE_DIR}")
-    print(f"Destination: {DEST_DIR}")
-    print(f"Performance optimizations: {'Enabled' if ENABLE_FAST_HASH else 'Disabled'}")
-    print(f"Fast hash sampling: {FAST_HASH_BYTES} bytes")
-    print()
-    
-    scan_and_organize_photos()
-
-def check_test_folders():
-    """Check if test data folders exist."""
-    test_source = os.path.join(os.path.dirname(__file__), "test_data", "source_photos")
-    test_dest = os.path.join(os.path.dirname(__file__), "test_data", "dest_photos")
-    
-    return os.path.isdir(test_source) and os.path.isdir(test_dest)
 
 def file_hash(filepath, blocksize=65536):
     """Compute the SHA-256 hash of a file."""
@@ -803,24 +771,15 @@ if __name__ == "__main__":
         json_mode()
         sys.exit(0)
 
-    # Check if test mode is available
-    test_available = check_test_folders()
-    
     print("Choose mode:")
     print("[1] Normal copy (scan and process all)")
     print("[2] Manual copy (copy only files marked in CSV)")
     print("[3] Resume copy (continue where CSV left off)")
-    if test_available:
-        print("[T] Test mode (use test_data folders)")
-        mode = input("Mode (1/2/3/T): ").strip().lower()
-    else:
-        mode = input("Mode (1/2/3): ").strip().lower()
+    mode = input("Mode (1/2/3): ").strip().lower()
     
     if mode == "2":
         manual_copy_from_csv()
     elif mode == "3":
         resume_copy_from_csv()
-    elif mode == "t" and test_available:
-        test_mode()
     else:
         scan_and_organize_photos()

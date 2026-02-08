@@ -512,11 +512,6 @@ td.truncate {
   font-size: 13px;
 }
 
-.form-textarea {
-  min-height: 80px;
-  resize: vertical;
-}
-
 .form-select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
@@ -638,21 +633,6 @@ td.truncate {
   gap: 8px;
   padding: 16px 20px;
   border-top: 1px solid var(--border);
-}
-
-/* ---- Progress bar ---- */
-.progress-bar {
-  height: 6px;
-  background: var(--bg-active);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.progress-bar .progress-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: var(--radius-full);
-  transition: width 0.3s ease;
 }
 
 /* ---- Empty state ---- */
@@ -840,9 +820,6 @@ td .badge.cyan {
 .gap-8  { gap: 8px; }
 .gap-12 { gap: 12px; }
 .gap-16 { gap: 16px; }
-.mt-16  { margin-top: 16px; }
-.mt-24  { margin-top: 24px; }
-.mb-8   { margin-bottom: 8px; }
 .mb-16  { margin-bottom: 16px; }
 
 /* ---- Scrollbar ---- */
@@ -929,7 +906,7 @@ td .badge.cyan {
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
-  border: 2px solid var(--bg-primary);
+  border: 2px solid var(--bg-root);
   box-shadow: 0 0 0 2px var(--accent-muted);
   transition: box-shadow var(--transition);
 }
@@ -944,7 +921,7 @@ td .badge.cyan {
   border-radius: 50%;
   background: var(--accent);
   cursor: pointer;
-  border: 2px solid var(--bg-primary);
+  border: 2px solid var(--bg-root);
 }
 
 .range-labels {

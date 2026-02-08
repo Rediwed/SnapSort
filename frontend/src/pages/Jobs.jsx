@@ -92,7 +92,7 @@ export default function Jobs() {
     const pct = Math.round((r.processed / r.total_files) * 100);
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
-        <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--surface-2)' }}>
+        <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--bg-active)' }}>
           <div style={{ width: `${pct}%`, height: '100%', borderRadius: 3, background: r.status === 'done' ? 'var(--green)' : 'var(--accent)', transition: 'width .3s' }} />
         </div>
         <span className="mono" style={{ fontSize: 12 }}>{pct}%</span>
