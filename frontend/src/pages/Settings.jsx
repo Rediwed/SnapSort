@@ -104,8 +104,9 @@ export default function Settings() {
       </div>
 
       <div className="page-body">
+        <div className="settings-grid">
         {/* ── Filter & Quality ─────────────────────────────── */}
-        <div className="card" style={{ maxWidth: 600 }}>
+        <div className="card">
           <div className="card-header"><h3>Filter &amp; Quality</h3></div>
           {settingsMeta.map((s) => (
             <div className="form-group" key={s.key}>
@@ -134,7 +135,7 @@ export default function Settings() {
         </div>
 
         {/* ── Performance ──────────────────────────────────── */}
-        <div className="card" style={{ maxWidth: 600, marginTop: 20 }}>
+        <div className="card">
           <div className="card-header"><h3>Performance</h3></div>
 
           {/* Profile selector */}
@@ -283,7 +284,7 @@ export default function Settings() {
         </div>
 
         {/* ── File Formats ─────────────────────────────────── */}
-        <div className="card" style={{ maxWidth: 600, marginTop: 20 }}>
+        <div className="card">
           <div className="card-header flex justify-between items-center">
             <h3>File Formats</h3>
             <button className="btn sm" onClick={resetExts}>Reset Defaults</button>
@@ -312,6 +313,7 @@ export default function Settings() {
             />
             <button className="btn sm" onClick={addExt}>Add</button>
           </div>
+        </div>
         </div>
       </div>
     </>

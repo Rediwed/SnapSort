@@ -91,7 +91,7 @@ export default function Benchmarks() {
 
       <div className="page-body">
         {/* Config card */}
-        <div className="card mb-16" style={{ maxWidth: 600 }}>
+        <div className="card mb-16">
           <div className="card-header"><h3>Benchmark Configuration</h3></div>
           <div className="flex gap-12">
             <div className="form-group" style={{ flex: 1 }}>
