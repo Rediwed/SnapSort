@@ -184,7 +184,7 @@ export default function Jobs() {
         <div className="form-group">
           <label>Performance Profile</label>
           <select className="form-select" value={form.performanceProfile} onChange={(e) => setForm({ ...form, performanceProfile: e.target.value })}>
-            <option value="">Use global defaults</option>
+            <option value="">Settings page defaults</option>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}{p.is_builtin ? '' : ' (custom)'}
@@ -195,9 +195,13 @@ export default function Jobs() {
             const p = form.performanceProfile
               ? profiles.find((pr) => pr.id === form.performanceProfile)
               : null;
-            if (!p) return (
-              <p className="form-hint">Uses the settings configured on the Settings page.</p>
-            );
+            if (!p) {
+              return (
+                <p className="form-hint">
+                  Uses the performance profile configured on the <strong>Settings</strong> page.
+                </p>
+              );
+            }
             return (
               <>
                 {p.description && <p className="form-hint">{p.description}</p>}

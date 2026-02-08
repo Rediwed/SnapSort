@@ -12,8 +12,6 @@ const settingsMeta = [
   { key: 'min_filesize',           label: 'Min File Size (bytes)',    type: 'number' },
   { key: 'dedup_strict_threshold', label: 'Dedup Strict Threshold (%)', type: 'number' },
   { key: 'dedup_log_threshold',    label: 'Dedup Log Threshold (%)',    type: 'number' },
-  { key: 'fast_hash_bytes',        label: 'Fast Hash Sample (bytes)',   type: 'number' },
-  { key: 'enable_fast_hash',       label: 'Enable Fast Hashing',       type: 'toggle' },
   { key: 'enable_csv_log',         label: 'Enable CSV Logging',        type: 'toggle' },
 ];
 
@@ -70,9 +68,10 @@ export default function Settings() {
   const maxWorkers = Number(values.max_worker_threads) || 4;
   const hashWorkers = Number(values.parallel_hash_workers) || 4;
   const batchSize = Number(values.batch_size) || 25;
-  const hashBytes = Number(values.hash_bytes) || 4096;
+  const hashSampleBytes = Number(values.fast_hash_bytes) || 8192;
   const concurrentCopies = Number(values.concurrent_copies) || 2;
   const cpuCount = navigator.hardwareConcurrency || 4;
+  const enableFastHash = values.enable_fast_hash === 'true';
 
   /* Apply a profile's values to the settings */
   const applyProfile = (profileId) => {
@@ -85,7 +84,7 @@ export default function Settings() {
       sequential_processing: p.sequential_processing ? 'true' : 'false',
       max_worker_threads: String(p.max_workers),
       batch_size: String(p.batch_size),
-      hash_bytes: String(p.hash_bytes),
+      fast_hash_bytes: String(p.hash_bytes),
       concurrent_copies: String(p.concurrent_copies),
     }));
     setSaved(false);
@@ -245,21 +244,36 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Hash Bytes */}
+          {/* Enable Fast Hashing */}
           <div className="form-group">
-            <label>Hash Sample Bytes <span className="mono badge">{hashBytes.toLocaleString()}</span></label>
+            <label className="form-toggle">
+              <input
+                type="checkbox"
+                checked={enableFastHash}
+                onChange={(e) => handleChange('enable_fast_hash', e.target.checked ? 'true' : 'false')}
+              />
+              <span>Enable Fast Hashing</span>
+            </label>
+            <p className="form-hint">
+              Sample beginning, middle and end of files instead of reading the full content. Much faster on large files, especially on SSDs.
+            </p>
+          </div>
+
+          {/* Hash Sample Bytes */}
+          <div className="form-group">
+            <label>Hash Sample Size <span className="mono badge">{hashSampleBytes.toLocaleString()}</span></label>
             <input
               type="range"
               className="form-range"
               min={512}
               max={32768}
               step={512}
-              value={hashBytes}
-              onChange={(e) => handleChange('hash_bytes', e.target.value)}
+              value={hashSampleBytes}
+              onChange={(e) => handleChange('fast_hash_bytes', e.target.value)}
             />
             <div className="range-labels">
               <span>512</span>
-              <span>Bytes read per hash check</span>
+              <span>Bytes sampled per file for deduplication</span>
               <span>32,768</span>
             </div>
           </div>

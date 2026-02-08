@@ -41,7 +41,7 @@ function startJob(db, job) {
     max_worker_threads: profile ? String(profile.max_workers) : (settings.max_worker_threads || '4'),
     parallel_hash_workers: settings.parallel_hash_workers || '4',
     batch_size: profile ? String(profile.batch_size) : (settings.batch_size || '25'),
-    hash_bytes: profile ? String(profile.hash_bytes) : (settings.hash_bytes || '4096'),
+    hash_bytes: profile ? String(profile.hash_bytes) : (settings.fast_hash_bytes || settings.hash_bytes || '8192'),
     concurrent_copies: profile ? String(profile.concurrent_copies) : (settings.concurrent_copies || '2'),
     sequential_processing: profile ? (profile.sequential_processing ? 'true' : 'false') : (settings.sequential_processing || 'false'),
   };
