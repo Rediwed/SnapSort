@@ -154,7 +154,11 @@ print(json.dumps({"event": "phase", "phase": "copy", "time": round(copy_time, 4)
 # --- Phase 5: Hash performance on source files ---
 sys.path.insert(0, ${JSON.stringify(engineDir)})
 from photo_organizer import file_hash, file_hash_fast
+import multiprocessing
 
+cpu_count = multiprocessing.cpu_count()
+
+# 5a: Single-thread hash (baseline)
 t_hash_std = time.time()
 for fp in test_files:
     file_hash(fp)
@@ -166,23 +170,38 @@ for fp in test_files:
 fast_hash_time = time.time() - t_hash_fast
 
 hash_speedup = standard_hash_time / fast_hash_time if fast_hash_time > 0 else 1.0
-print(json.dumps({"event": "phase", "phase": "hash", "standard_time": round(standard_hash_time, 4), "fast_time": round(fast_hash_time, 4), "speedup": round(hash_speedup, 2)}), flush=True)
+print(json.dumps({"event": "phase", "phase": "hash_single", "standard_time": round(standard_hash_time, 4), "fast_time": round(fast_hash_time, 4), "speedup": round(hash_speedup, 2)}), flush=True)
+
+# 5b: Parallel hash (realistic — matches what the engine does with workers)
+worker_count = min(cpu_count, max(len(test_files), 1))
+t_parallel = time.time()
+try:
+    with multiprocessing.Pool(processes=worker_count) as pool:
+        pool.map(file_hash_fast, test_files)
+    parallel_hash_time = time.time() - t_parallel
+except Exception:
+    # Fallback if multiprocessing fails (e.g. spawn issues)
+    parallel_hash_time = fast_hash_time
+
+parallel_speedup = fast_hash_time / parallel_hash_time if parallel_hash_time > 0 else 1.0
+print(json.dumps({"event": "phase", "phase": "hash_parallel", "time": round(parallel_hash_time, 4), "workers": worker_count, "speedup_vs_single": round(parallel_speedup, 2)}), flush=True)
 
 # --- Compute throughput metrics ---
 total_mb = total_bytes / (1024 * 1024)
-source_read_mbps  = total_mb / source_read_time  if source_read_time  > 0 else 0
-source_write_mbps = total_mb / source_write_time  if source_write_time > 0 else 0
-dest_write_mbps   = total_mb / dest_write_time    if dest_write_time   > 0 else 0
-copy_mbps         = total_mb / copy_time          if copy_time         > 0 else 0
-hash_mbps         = total_mb / fast_hash_time     if fast_hash_time    > 0 else 0
+source_read_mbps  = total_mb / source_read_time   if source_read_time   > 0 else 0
+source_write_mbps = total_mb / source_write_time   if source_write_time  > 0 else 0
+dest_write_mbps   = total_mb / dest_write_time     if dest_write_time    > 0 else 0
+copy_mbps         = total_mb / copy_time           if copy_time          > 0 else 0
+hash_single_mbps  = total_mb / fast_hash_time      if fast_hash_time     > 0 else 0
+hash_parallel_mbps= total_mb / parallel_hash_time  if parallel_hash_time > 0 else 0
 
 # --- Bottleneck analysis ---
-# During a real job: files are read from source, hashed, then written to dest.
-# The bottleneck is whichever stage is slowest.
+# The engine uses parallel hashing, so use parallel throughput for comparison.
+# During a real job: files are read from source, hashed (in parallel), then written to dest.
 metrics = {
     "source":      source_read_mbps,
     "destination": dest_write_mbps,
-    "cpu":         hash_mbps,
+    "cpu":         hash_parallel_mbps,
 }
 bottleneck = min(metrics, key=metrics.get)
 
@@ -212,14 +231,19 @@ print(json.dumps({
     "source_write_mbps":    round(source_write_mbps, 2),
     "dest_write_mbps":      round(dest_write_mbps, 2),
     "copy_mbps":            round(copy_mbps, 2),
-    "hash_mbps":            round(hash_mbps, 2),
+    "hash_single_mbps":     round(hash_single_mbps, 2),
+    "hash_parallel_mbps":   round(hash_parallel_mbps, 2),
+    "hash_workers":         worker_count,
+    "cpu_count":            cpu_count,
     "source_read_time":     round(source_read_time, 4),
     "source_write_time":    round(source_write_time, 4),
     "dest_write_time":      round(dest_write_time, 4),
     "copy_time":            round(copy_time, 4),
     "hash_standard_time":   round(standard_hash_time, 4),
     "hash_fast_time":       round(fast_hash_time, 4),
+    "hash_parallel_time":   round(parallel_hash_time, 4),
     "hash_speedup":         round(hash_speedup, 2),
+    "parallel_speedup":     round(parallel_speedup, 2),
     "bottleneck":           bottleneck,
     "suggested_profile":    suggested_profile,
 }), flush=True)

@@ -120,7 +120,8 @@ export default function Benchmarks() {
     source_read: 'Reading from source…',
     dest_write: 'Writing to destination…',
     copy: 'Copying source → destination…',
-    hash: 'Hashing files…',
+    hash_single: 'Hashing (single-thread)…',
+    hash_parallel: 'Hashing (multi-core)…',
   };
 
   const historyColumns = [
@@ -251,11 +252,11 @@ export default function Benchmarks() {
               <>
                 {/* Throughput stats */}
                 <div className="stat-grid">
-                  <StatCard label="Source Read"   value={`${r.source_read_mbps} MB/s`}  variant="cyan" />
-                  <StatCard label="Dest Write"    value={`${r.dest_write_mbps} MB/s`}   variant="accent" />
-                  <StatCard label="Copy Speed"    value={`${r.copy_mbps} MB/s`}         variant="green" sub="Source → Destination" />
-                  <StatCard label="Hash Speed"    value={`${r.hash_mbps} MB/s`}         variant="pink" sub={`${r.hash_speedup}× fast-hash speedup`} />
-                  <StatCard label="Data Tested"   value={formatBytes(r.total_bytes)}     variant="orange" sub={`${r.file_count} × ${r.file_size_mb} MB files`} />
+                  <StatCard label="Source Read"    value={`${r.source_read_mbps} MB/s`}    variant="cyan" />
+                  <StatCard label="Dest Write"     value={`${r.dest_write_mbps} MB/s`}     variant="accent" />
+                  <StatCard label="Copy Speed"     value={`${r.copy_mbps} MB/s`}           variant="green" sub="Source → Destination" />
+                  <StatCard label="Hash (parallel)" value={`${r.hash_parallel_mbps} MB/s`} variant="pink" sub={`${r.hash_workers} workers · ${r.hash_single_mbps} MB/s single-thread`} />
+                  <StatCard label="Data Tested"    value={formatBytes(r.total_bytes)}       variant="orange" sub={`${r.file_count} × ${r.file_size_mb} MB · ${r.cpu_count} CPU cores`} />
                 </div>
 
                 {/* ---- Bottleneck analysis ---- */}
@@ -273,15 +274,15 @@ export default function Benchmarks() {
                         ? `Source read speed (${r.source_read_mbps} MB/s) is the limiting factor. The destination can write faster than the source can deliver data. Consider a faster source drive or sequential I/O to avoid thrashing.`
                         : r.bottleneck === 'destination'
                         ? `Destination write speed (${r.dest_write_mbps} MB/s) is the limiting factor. The source can read faster than the destination can accept data. Limiting concurrent copies prevents overwhelming the destination.`
-                        : `CPU hashing speed (${r.hash_mbps} MB/s) is the limiting factor. Both drives are faster than hashing can process. Enabling fast hash and adding workers will help most.`}
+                        : `CPU hashing speed (${r.hash_parallel_mbps} MB/s with ${r.hash_workers} workers) is the limiting factor. Both drives are faster than hashing can process. Enabling fast hash and adding workers will help most.`}
                     </p>
                     <div className="bench-bottleneck-bars">
                       {[
                         { label: 'Source Read', value: r.source_read_mbps, color: 'var(--cyan)' },
                         { label: 'Dest Write', value: r.dest_write_mbps, color: 'var(--accent)' },
-                        { label: 'Hash Speed', value: r.hash_mbps, color: 'var(--pink)' },
+                        { label: `Hash (${r.hash_workers}w)`, value: r.hash_parallel_mbps, color: 'var(--pink)' },
                       ].map(({ label, value, color }) => {
-                        const max = Math.max(r.source_read_mbps, r.dest_write_mbps, r.hash_mbps);
+                        const max = Math.max(r.source_read_mbps, r.dest_write_mbps, r.hash_parallel_mbps);
                         return (
                           <div key={label} className="bench-bar-row">
                             <span className="bench-bar-label">{label}</span>
