@@ -191,9 +191,27 @@ export default function Jobs() {
               </option>
             ))}
           </select>
-          {form.performanceProfile && profiles.find((p) => p.id === form.performanceProfile)?.description && (
-            <p className="form-hint">{profiles.find((p) => p.id === form.performanceProfile).description}</p>
-          )}
+          {(() => {
+            const p = form.performanceProfile
+              ? profiles.find((pr) => pr.id === form.performanceProfile)
+              : null;
+            if (!p) return (
+              <p className="form-hint">Uses the settings configured on the Settings page.</p>
+            );
+            return (
+              <>
+                {p.description && <p className="form-hint">{p.description}</p>}
+                <div className="profile-summary">
+                  <span>{p.enable_multithreading ? '⚡ Multi-threaded' : '🔄 Single-threaded'}</span>
+                  <span>Workers: {p.max_workers}</span>
+                  <span>Batch: {p.batch_size}</span>
+                  <span>Copies: {p.concurrent_copies}</span>
+                  <span>Hash: {(p.hash_bytes / 1024).toFixed(0)} KB</span>
+                  {p.sequential_processing ? <span>📀 Sequential I/O</span> : null}
+                </div>
+              </>
+            );
+          })()}
         </div>
         <div className="flex gap-12">
           <div className="form-group" style={{ flex: 1 }}>

@@ -804,6 +804,24 @@ td .badge.cyan {
   flex-wrap: nowrap;
 }
 
+/* Profile summary tags (job creation modal) */
+.profile-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.profile-summary span {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 /* ---- Animations ---- */
 @keyframes fadeIn {
   from { opacity: 0; }
