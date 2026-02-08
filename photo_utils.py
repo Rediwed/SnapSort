@@ -148,13 +148,23 @@ def copy_photo_with_metadata(
     width = None
     height = None
 
-    # ── Source-safety check: dest must not be inside source directory ──
+    # ── Source-safety check: source and destination must be completely disjoint ──
     _src_dir = os.path.dirname(os.path.abspath(src_path))
     _dest_resolved = os.path.abspath(dest_dir)
-    if _dest_resolved == _src_dir or _dest_resolved.startswith(_src_dir + os.sep):
+    if _dest_resolved == _src_dir:
+        raise RuntimeError(
+            f"SOURCE SAFETY VIOLATION: destination '{dest_dir}' is the same as "
+            f"source directory '{_src_dir}'. SnapSort never writes to source directories."
+        )
+    if _dest_resolved.startswith(_src_dir + os.sep):
         raise RuntimeError(
             f"SOURCE SAFETY VIOLATION: destination '{dest_dir}' is inside source "
             f"directory '{_src_dir}'. SnapSort never writes to source directories."
+        )
+    if _src_dir.startswith(_dest_resolved + os.sep):
+        raise RuntimeError(
+            f"SOURCE SAFETY VIOLATION: source directory '{_src_dir}' is inside "
+            f"destination '{dest_dir}'. This would cause re-processing of output."
         )
 
     if not force_copy:

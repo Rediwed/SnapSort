@@ -31,6 +31,21 @@ export default function Jobs() {
   }, [jobs, load]);
 
   const handleCreate = async () => {
+    /* Source safety: reject overlapping source/dest before hitting the API */
+    const src = form.sourceDir.replace(/\/+$/, '');
+    const dst = form.destDir.replace(/\/+$/, '');
+    if (src === dst) {
+      alert('Source and destination cannot be the same directory.');
+      return;
+    }
+    if (dst.startsWith(src + '/')) {
+      alert('Destination must not be inside the source directory. SnapSort never modifies source files.');
+      return;
+    }
+    if (src.startsWith(dst + '/')) {
+      alert('Source must not be inside the destination directory — this would cause SnapSort to re-process its own output.');
+      return;
+    }
     await createJob(form);
     setShowNew(false);
     setForm({ sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200, performanceProfile: '' });

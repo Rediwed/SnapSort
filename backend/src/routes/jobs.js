@@ -65,14 +65,17 @@ router.post('/', (req, res) => {
   if (!sourceDir || !destDir) {
     return res.status(400).json({ error: 'sourceDir and destDir are required' });
   }
-  /* Source safety: destination must never overlap with source */
+  /* Source safety: source and destination must be completely disjoint */
   const resolvedSrc = path.resolve(sourceDir);
   const resolvedDst = path.resolve(destDir);
-  if (resolvedDst === resolvedSrc || resolvedDst.startsWith(resolvedSrc + path.sep)) {
-    return res.status(400).json({ error: 'Destination directory must not be inside the source directory. SnapSort never modifies source files.' });
+  if (resolvedDst === resolvedSrc) {
+    return res.status(400).json({ error: 'Source and destination cannot be the same directory.' });
+  }
+  if (resolvedDst.startsWith(resolvedSrc + path.sep)) {
+    return res.status(400).json({ error: 'Destination must not be inside the source directory. SnapSort never modifies source files.' });
   }
   if (resolvedSrc.startsWith(resolvedDst + path.sep)) {
-    return res.status(400).json({ error: 'Source directory must not be inside the destination directory to avoid recursive processing.' });
+    return res.status(400).json({ error: 'Source must not be inside the destination directory — this would cause SnapSort to re-process its own output.' });
   }
   const job = createJob(req.db, { sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile });
   res.status(201).json(job);

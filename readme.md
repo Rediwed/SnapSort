@@ -47,7 +47,16 @@ A full-stack web interface for managing photo organization visually:
 - **File Picker** — server-side directory browser with external drive detection
 - **Test Data** — one-click test dataset loading for development and validation
 
-### 🐳 Docker & Unraid Support
+### �️ Source Safety Guarantee
+SnapSort will **never** write to, modify, rename, move, or delete any file or directory in your source locations. Source drives and directories are treated as **strictly read-only** at every layer of the application:
+
+- **Python engine**: Every copy operation verifies the destination is not inside the source directory before writing. A `RuntimeError` is raised if violated.
+- **Node.js backend**: A dedicated `sourceGuard` module checks every destructive file operation against all known source directories. Job creation is rejected if the source and destination directories overlap in any direction.
+- **API layer**: No endpoint exists that can modify or delete source files. The only file operations SnapSort performs on disk are writing to the destination directory and cleaning up its own output.
+
+This is SnapSort's **#1 invariant** — enforced by defense-in-depth across the full stack.
+
+### �🐳 Docker & Unraid Support
 SnapSort ships as a unified single container:
 
 - **Multi-stage Dockerfile**: Frontend build → backend dependencies → runtime with Node.js + Python
