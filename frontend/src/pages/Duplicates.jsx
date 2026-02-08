@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Badge from '../components/Badge';
 import PillTabs from '../components/PillTabs';
-import { fetchDuplicates, fetchDuplicateJobs, resolveDuplicate, deleteDuplicateFile } from '../api';
+import { fetchDuplicates, fetchDuplicateJobs, resolveDuplicate } from '../api';
 
 const resolutionVariant = { keep: 'green', delete: 'red', undecided: 'orange' };
 
@@ -82,16 +82,6 @@ export default function Duplicates() {
     load();
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Permanently delete this source file from disk?')) return;
-    try {
-      await deleteDuplicateFile(id);
-      load();
-    } catch (err) {
-      alert(`Delete failed: ${err.message}`);
-    }
-  };
-
   const summaryText = resolution
     ? `${total.toLocaleString()} ${resolution} duplicate${total !== 1 ? 's' : ''}`
     : `${total.toLocaleString()} duplicate pair${total !== 1 ? 's' : ''} detected`;
@@ -157,10 +147,7 @@ export default function Duplicates() {
                             <button className="btn sm" onClick={() => handleResolve(dup.id, 'keep')}>Keep</button>
                           )}
                           {res !== 'delete' && (
-                            <button className="btn sm danger" onClick={() => handleResolve(dup.id, 'delete')}>Skip</button>
-                          )}
-                          {res === 'delete' && (
-                            <button className="btn sm danger" onClick={() => handleDelete(dup.id)} title="Permanently delete source file">🗑 Delete File</button>
+                            <button className="btn sm danger" onClick={() => handleResolve(dup.id, 'delete')}>Ignore</button>
                           )}
                           {res !== 'undecided' && (
                             <button className="btn sm" onClick={() => handleResolve(dup.id, 'undecided')}>Reset</button>

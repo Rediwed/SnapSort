@@ -3,7 +3,6 @@
  */
 
 const { Router } = require('express');
-const fs = require('fs');
 const { listDuplicates, countDuplicates, resolveDuplicate, listJobs } = require('../db/dao');
 
 const router = Router();
@@ -47,20 +46,13 @@ router.patch('/:id', (req, res) => {
   res.json({ id: req.params.id, resolution });
 });
 
-/* Actually delete the source file for a duplicate resolved as 'delete' */
-router.delete('/:id/file', (req, res) => {
-  const dup = req.db.prepare('SELECT * FROM duplicates WHERE id = ?').get(req.params.id);
-  if (!dup) return res.status(404).json({ error: 'Duplicate not found' });
-  try {
-    if (fs.existsSync(dup.src_path)) {
-      fs.unlinkSync(dup.src_path);
-      resolveDuplicate(req.db, req.params.id, 'delete');
-      return res.json({ deleted: true, path: dup.src_path });
-    }
-    return res.json({ deleted: false, error: 'File not found on disk' });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
+/*
+ * ⚠️  SOURCE SAFETY PRINCIPLE
+ *
+ * SnapSort NEVER writes to, modifies, or deletes files in source directories.
+ * Source paths are strictly read-only.  The "delete" resolution is a label
+ * only — it marks the duplicate for the user's records but does NOT touch
+ * the file on disk.
+ */
 
 module.exports = router;

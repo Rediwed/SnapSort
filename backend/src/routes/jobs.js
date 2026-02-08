@@ -10,6 +10,7 @@ const {
   getPhotosByIds, updatePhotoOverride,
 } = require('../db/dao');
 const { startJob, cancelJob } = require('../services/pythonBridge');
+const { assertNotInSource } = require('../sourceGuard');
 
 const router = Router();
 
@@ -64,6 +65,15 @@ router.post('/', (req, res) => {
   if (!sourceDir || !destDir) {
     return res.status(400).json({ error: 'sourceDir and destDir are required' });
   }
+  /* Source safety: destination must never overlap with source */
+  const resolvedSrc = path.resolve(sourceDir);
+  const resolvedDst = path.resolve(destDir);
+  if (resolvedDst === resolvedSrc || resolvedDst.startsWith(resolvedSrc + path.sep)) {
+    return res.status(400).json({ error: 'Destination directory must not be inside the source directory. SnapSort never modifies source files.' });
+  }
+  if (resolvedSrc.startsWith(resolvedDst + path.sep)) {
+    return res.status(400).json({ error: 'Source directory must not be inside the destination directory to avoid recursive processing.' });
+  }
   const job = createJob(req.db, { sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile });
   res.status(201).json(job);
 });
@@ -110,8 +120,15 @@ router.delete('/:id/photos', (req, res) => {
   let failed = 0;
   for (const p of paths) {
     try {
+      /* Source safety: refuse to delete anything inside a source dir */
+      assertNotInSource(req.db, p);
       if (fs.existsSync(p)) { fs.unlinkSync(p); deleted++; }
-    } catch { failed++; }
+    } catch (err) {
+      if (err.message.includes('SOURCE SAFETY')) {
+        console.error(err.message);
+      }
+      failed++;
+    }
   }
   deleteJob(req.db, req.params.id);
   res.json({ deleted, failed, total: paths.length });

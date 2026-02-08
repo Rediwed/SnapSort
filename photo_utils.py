@@ -139,9 +139,23 @@ def copy_photo_with_metadata(
     force_copy=False,
     dedup_index=None,
 ):
-    """Copy a photo to the destination directory with metadata extraction and renaming."""
+    """Copy a photo to the destination directory with metadata extraction and renaming.
+
+    ⚠️  SOURCE SAFETY: This function ONLY reads from src_path and writes to
+    dest_dir.  It NEVER modifies, renames, moves, or deletes the source file.
+    The destination is always verified to NOT be inside the source directory.
+    """
     width = None
     height = None
+
+    # ── Source-safety check: dest must not be inside source directory ──
+    _src_dir = os.path.dirname(os.path.abspath(src_path))
+    _dest_resolved = os.path.abspath(dest_dir)
+    if _dest_resolved == _src_dir or _dest_resolved.startswith(_src_dir + os.sep):
+        raise RuntimeError(
+            f"SOURCE SAFETY VIOLATION: destination '{dest_dir}' is inside source "
+            f"directory '{_src_dir}'. SnapSort never writes to source directories."
+        )
 
     if not force_copy:
         path_lower = src_path.lower()
