@@ -9,8 +9,8 @@ export default function Layout() {
     <div className="app-layout">
       <button
         className="mobile-menu-btn"
-        onClick={() => setMenuOpen(true)}
-        aria-label="Open menu"
+        onClick={() => setMenuOpen((v) => !v)}
+        aria-label={menuOpen ? 'Close menu' : 'Open menu'}
       >
         <span /><span /><span />
       </button>

@@ -42,7 +42,6 @@ export default function Sidebar({ open, onClose }) {
             <div className="logo-icon">S</div>
             <h1>SnapSort</h1>
           </div>
-          <button className="mobile-drawer-close" onClick={onClose} aria-label="Close menu">✕</button>
         </div>
         <nav className="mobile-drawer-nav">
           {links.map((l) => (
