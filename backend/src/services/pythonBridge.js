@@ -117,12 +117,22 @@ function startJob(db, job) {
 /**
  * Cancel a running job.
  */
-function cancelJob(jobId) {
+function cancelJob(jobId, db) {
   const child = activeProcesses.get(jobId);
   if (child) {
     child.kill('SIGTERM');
     activeProcesses.delete(jobId);
     photoIdMaps.delete(jobId);
+    currentFiles.delete(jobId);
+    /* Update status in DB if a db handle was provided (e.g. during shutdown) */
+    if (db) {
+      try {
+        updateJobStatus(db, jobId, 'cancelled', {
+          finished_at: new Date().toISOString(),
+          error_message: 'Job cancelled due to server shutdown',
+        });
+      } catch { /* db may already be closed */ }
+    }
   }
 }
 

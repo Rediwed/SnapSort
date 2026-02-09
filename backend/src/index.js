@@ -88,3 +88,48 @@ server.on('error', (err) => {
   }
   process.exit(1);
 });
+
+/* ------------------------------------------------------------------ */
+/*  Graceful shutdown (Docker SIGTERM / Ctrl-C)                        */
+/* ------------------------------------------------------------------ */
+const { cancelJob, getActiveJobIds } = require('./services/pythonBridge');
+
+function shutdown(signal) {
+  console.log(`\n🛑  Received ${signal} — shutting down gracefully…`);
+
+  /* 1. Kill any running Python child processes */
+  const activeIds = getActiveJobIds();
+  if (activeIds.length) {
+    console.log(`   Cancelling ${activeIds.length} active job(s)…`);
+    for (const jobId of activeIds) {
+      try {
+        cancelJob(jobId, db);
+      } catch (err) {
+        console.error(`   Failed to cancel job ${jobId}:`, err.message);
+      }
+    }
+  }
+
+  /* 2. Close the database connection */
+  try {
+    db.close();
+    console.log('   Database closed.');
+  } catch {
+    /* already closed or never opened */
+  }
+
+  /* 3. Stop accepting new connections and close the HTTP server */
+  server.close(() => {
+    console.log('   HTTP server closed. Goodbye.');
+    process.exit(0);
+  });
+
+  /* 4. Force-exit if cleanup takes too long (5 s safety net) */
+  setTimeout(() => {
+    console.error('   Shutdown timed out — forcing exit.');
+    process.exit(1);
+  }, 5000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

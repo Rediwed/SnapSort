@@ -9,6 +9,10 @@ services:
     volumes:
       - db-data:/app/backend/data         # persist SQLite database
       - /mnt/user/photos:/mnt/photos      # adjust to your photo share
+      # Optional: mount external/unallocated disks (Unraid Unassigned Devices plugin)
+      # - /mnt/disks:/mnt/disks
+      # Optional: mount all user shares (read-only)
+      # - /mnt/user:/mnt/user:ro
     environment:
       - NODE_ENV=production
       - PORT=4000

@@ -98,6 +98,18 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
                   <div className="empty-icon">💾</div>
                   <h3>No external drives detected</h3>
                   <p>Connect a USB, SATA, or NVMe drive and refresh.</p>
+                  <div style={{
+                    marginTop: 16, padding: '12px 16px',
+                    background: 'var(--bg-input)', borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border)', textAlign: 'left',
+                    fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6,
+                  }}>
+                    <strong style={{ color: 'var(--text-primary)' }}>🐳 Running in Docker?</strong><br />
+                    Only paths mounted into the container are visible. Add volume mappings in your
+                    container settings for any drives you want to browse:<br />
+                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>/mnt/disks → /mnt/disks</code> (Unraid USB/external drives)<br />
+                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>/mnt/user → /mnt/user</code> (Unraid user shares)
+                  </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

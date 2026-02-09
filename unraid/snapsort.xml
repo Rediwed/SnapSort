@@ -51,6 +51,30 @@
     Required="true"
     Mask="false">/mnt/user/photos</Config>
 
+  <!-- External / unallocated disks (requires Unassigned Devices plugin) -->
+  <Config
+    Name="External/Unallocated Disks"
+    Target="/mnt/disks"
+    Default="/mnt/disks"
+    Mode="rw"
+    Description="Mount unassigned/external drives so SnapSort can read from USB, SATA, or NVMe drives not in the array"
+    Type="Path"
+    Display="always"
+    Required="false"
+    Mask="false">/mnt/disks</Config>
+
+  <!-- User shares (optional — gives access to all Unraid shares) -->
+  <Config
+    Name="User Shares"
+    Target="/mnt/user"
+    Default="/mnt/user"
+    Mode="ro"
+    Description="Mount Unraid user shares so SnapSort can browse files from any share (read-only by default)"
+    Type="Path"
+    Display="advanced"
+    Required="false"
+    Mask="false">/mnt/user</Config>
+
   <!-- SQLite database persistence -->
   <Config
     Name="App Data"
