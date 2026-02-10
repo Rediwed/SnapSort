@@ -53,6 +53,7 @@ coverage.xml
 
 # Local test assets
 test_data/
+demo_data/
 
 # System files
 .DS_Store
@@ -75,6 +76,9 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+
+# CleanShot source files
+*.cleanshot
 
 # Docker / container
 docker-compose.override.yml

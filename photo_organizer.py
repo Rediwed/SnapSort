@@ -620,6 +620,15 @@ def json_mode():
     if sequential:
         use_threading = False
 
+    # Demo mode: slow down processing so the UI looks active in screenshots.
+    # Also force sequential so progress updates arrive file-by-file (threaded
+    # batches would cause the bar to jump in chunks).
+    demo_mode = os.environ.get("SNAPSORT_DEMO", "").lower() in ("1", "true", "yes")
+    demo_delay = float(os.environ.get("SNAPSORT_DEMO_DELAY", "0.35")) if demo_mode else 0
+    if demo_mode:
+        use_threading = False
+        emit({"event": "progress", "message": f"Demo mode active — {demo_delay}s delay per file, sequential processing"})
+
     if use_threading:
         try:
             import concurrent.futures as _cf
@@ -741,7 +750,12 @@ def json_mode():
 
         def _process_batch(batch):
             """Process a batch and return list of result dicts."""
-            return [process_single_file(fp, **_common) for fp in batch]
+            results = []
+            for fp in batch:
+                results.append(process_single_file(fp, **_common))
+                if demo_delay:
+                    time.sleep(demo_delay)
+            return results
 
         with _cf.ThreadPoolExecutor(max_workers=max_workers) as pool:
             futures = [pool.submit(_process_batch, b) for b in batches]
@@ -756,6 +770,8 @@ def json_mode():
         for fp in all_files:
             r = process_single_file(fp, **_common)
             _handle_result(r)
+            if demo_delay:
+                time.sleep(demo_delay)
 
     # ── Done ────────────────────────────────────────────────────────
     emit({

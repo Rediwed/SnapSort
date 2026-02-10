@@ -70,7 +70,13 @@ function startJob(db, job) {
 
   const child = spawn('python3', [pythonScript, '--json-config', '-'], {
     cwd: path.join(__dirname, '..', '..', '..'),
-    env: { ...process.env, SNAPSORT_JSON_MODE: '1' },
+    env: {
+      ...process.env,
+      SNAPSORT_JSON_MODE: '1',
+      /* Forward demo mode so Python adds a per-file delay */
+      ...(process.env.SNAPSORT_DEMO ? { SNAPSORT_DEMO: process.env.SNAPSORT_DEMO } : {}),
+      ...(process.env.SNAPSORT_DEMO_DELAY ? { SNAPSORT_DEMO_DELAY: process.env.SNAPSORT_DEMO_DELAY } : {}),
+    },
   });
 
   activeProcesses.set(job.id, child);

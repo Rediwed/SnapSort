@@ -6,6 +6,21 @@ SnapSort is available as both a **Python CLI tool** and a **full-stack web GUI**
 
 ![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue)
 
+<details>
+<summary><strong>📸 Screenshots</strong> (click to expand)</summary>
+<br>
+<table>
+  <tr>
+    <td align="center"><strong>Dashboard</strong><br><img src="docs/screenshots/snapsort-dashboard.png" width="400"></td>
+    <td align="center"><strong>Jobs</strong><br><img src="docs/screenshots/snapsort-jobs.png" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Duplicates</strong><br><img src="docs/screenshots/snapsort-duplicates.png" width="400"></td>
+    <td align="center"><strong>Benchmarks</strong><br><img src="docs/screenshots/snapsort-benchmark.png" width="400"></td>
+  </tr>
+</table>
+</details>
+
 ---
 
 ## ✨ Key Features

@@ -25,13 +25,19 @@ router.get('/', (req, res) => {
   res.json(jobs);
 });
 
-/* Test presets — return available test datasets */
+/* Test presets — return available test/demo datasets */
 router.get('/test-presets', (_req, res) => {
   const fs = require('fs');
   const path = require('path');
-  const manifestPath = path.join(__dirname, '..', '..', '..', 'test_data', 'manifest.json');
-  if (!fs.existsSync(manifestPath)) {
-    return res.json({ available: false, message: 'No test data found. Run: python3 generate_test_data.py' });
+
+  /* Look for both test_data and demo_data manifests; prefer demo_data if both exist */
+  const candidates = [
+    path.join(__dirname, '..', '..', '..', 'demo_data', 'manifest.json'),
+    path.join(__dirname, '..', '..', '..', 'test_data', 'manifest.json'),
+  ];
+  const manifestPath = candidates.find((p) => fs.existsSync(p));
+  if (!manifestPath) {
+    return res.json({ available: false, message: 'No test data found. Run: python3 generate_demo_data.py (or generate_test_data.py)' });
   }
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -46,6 +52,7 @@ router.get('/test-presets', (_req, res) => {
       baseDir,
       presets,
       edgeCases: manifest.edge_cases || [],
+      demo: manifest.demo || false,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

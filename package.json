@@ -6,7 +6,14 @@
     "dev": "concurrently -k -n BE,FE -c blue,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "start": "npm start --prefix backend",
     "build": "npm run build --prefix frontend",
-    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend"
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "demo": "python3 generate_demo_data.py && node scripts/seed_demo_db.js && concurrently -k -n BE,FE -c blue,magenta \"SNAPSORT_DEMO=true npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "demo:seed": "node scripts/seed_demo_db.js",
+    "demo:data": "python3 generate_demo_data.py",
+    "clear:demo": "rm -rf demo_data && echo 'Demo data cleared.'",
+    "clear:test": "rm -rf test_data && echo 'Test data cleared.'",
+    "clear:db": "node scripts/clear_db.js",
+    "clear:all": "node scripts/clear_all.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
