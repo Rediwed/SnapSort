@@ -1,25 +1,25 @@
-# SnapSort - Uncover Forgotten Moments
+<p align="center">
+  <img src="logos/logo-color.svg" width="420" alt="SnapSort">
+</p>
+
+<h3 align="center">Uncover Forgotten Moments</h3>
 
 SnapSort helps you organize and extract personal photos from large, mixed-content drives with intelligent filtering and robust processing. It automatically sorts images by date while avoiding system files and application images, making it perfect for recovering memories from old hard drives or organizing large photo collections.
 
 SnapSort is available as both a **Python CLI tool** and a **full-stack web GUI** — run it locally, in Docker, or on Unraid.
 
 ![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue)
+![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=nodedotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)
+![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
 
-<details>
-<summary><strong>📸 Screenshots</strong> (click to expand)</summary>
-<br>
-<table>
-  <tr>
-    <td align="center"><strong>Dashboard</strong><br><img src="docs/screenshots/snapsort-dashboard.png" width="400"></td>
-    <td align="center"><strong>Jobs</strong><br><img src="docs/screenshots/snapsort-jobs.png" width="400"></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>Duplicates</strong><br><img src="docs/screenshots/snapsort-duplicates.png" width="400"></td>
-    <td align="center"><strong>Benchmarks</strong><br><img src="docs/screenshots/snapsort-benchmark.png" width="400"></td>
-  </tr>
-</table>
-</details>
+<p align="center">
+  <img src="docs/screenshots/snapsort-dashboard.png" width="720" alt="SnapSort Dashboard">
+</p>
 
 ---
 
@@ -44,6 +44,10 @@ SnapSort includes a multi-strategy deduplication system:
 - **Configurable thresholds**: Strict threshold (auto-skip) and log threshold (flag for review)
 - **Destination seeding**: Pre-indexes existing files in the destination to avoid re-copying
 
+<p align="center">
+  <img src="docs/screenshots/snapsort-duplicates.png" width="680" alt="SnapSort Duplicates">
+</p>
+
 ### ⏳ Progress Tracking
 Real-time feedback during operation:
 - Animated spinner during initialization
@@ -55,6 +59,10 @@ A full-stack web interface for managing photo organization visually:
 
 - **Dashboard** — overview stats across all jobs
 - **Jobs** — create, start, monitor, and delete organization runs with live progress bars; choose a performance profile per job with a settings summary preview
+
+<p align="center">
+  <img src="docs/screenshots/snapsort-jobs.png" width="680" alt="SnapSort Jobs">
+</p>
 - **Photos** — browse all processed photos with status filtering (copied/skipped/error), skip reasons, dimensions, date taken
 - **Duplicates** — review flagged duplicate pairs
 - **Benchmarks** — test real storage I/O on your source & destination folders, identify the bottleneck, and get a recommended performance profile (see below)
@@ -71,6 +79,10 @@ SnapSort can benchmark the actual drives you'll use and recommend the best perfo
 3. **Bottleneck analysis** identifies whether the source volume, destination volume, or CPU hashing is the limiting factor — shown with a visual bar chart
 4. **Profile recommendation** suggests the best built-in profile based on the *slowest storage* in the chain — because the bottleneck sets the pace
 5. **One-click apply** writes the recommended profile's settings as your global defaults
+
+<p align="center">
+  <img src="docs/screenshots/snapsort-benchmark.png" width="680" alt="SnapSort Benchmarks">
+</p>
 
 Same source/destination path is blocked at both the frontend and backend.
 
@@ -163,47 +175,151 @@ SnapSort offers three distinct operation modes:
 
 ## 🚀 Getting Started
 
-### Quick Start (Docker)
+### One-Line Install
+
+Run this single command to install and start SnapSort — it handles everything automatically:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Rediwed/SnapSort/main/scripts/install.sh)"
+```
+
+The installer will automatically:
+- Install **Git**, **Docker**, and **Docker Compose** if they're not already present (macOS & Linux)
+- Clone SnapSort to `~/SnapSort` (or pull updates if it already exists)
+- Ask for your photo folder path and preferred port
+- Build and start the container
+
+No prerequisites required — just a terminal and an internet connection.
+
+---
+
+### Option 1: Docker (Recommended)
+
+Docker packages everything SnapSort needs into a single container — no manual dependency management required.
+
+#### Prerequisites
+
+1. **Install Docker Desktop** (includes Docker Compose):
+   - **macOS / Windows**: Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+   - **Linux**: Follow the [official install guide](https://docs.docker.com/engine/install/), then install [Docker Compose](https://docs.docker.com/compose/install/)
+
+2. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Rediwed/SnapSort.git
+   cd SnapSort
+   ```
+
+#### Configure your photo paths
+
+Before starting, edit `docker-compose.yml` to mount the drives/folders you want SnapSort to access. The default looks like this:
+
+```yaml
+volumes:
+  - db-data:/app/backend/data         # persist SQLite database
+  - /mnt/user/photos:/mnt/photos      # ← change this to your photo folder
+```
+
+Replace `/mnt/user/photos` with the actual path on your system, e.g.:
+- **macOS**: `/Users/you/Pictures:/mnt/photos`
+- **Windows (WSL)**: `/mnt/c/Users/you/Pictures:/mnt/photos`
+- **Linux**: `/home/you/Pictures:/mnt/photos`
+
+You can add multiple volume mounts if you have photos on different drives:
+```yaml
+volumes:
+  - db-data:/app/backend/data
+  - /Volumes/ExternalHDD:/mnt/external:ro    # read-only source
+  - /Users/you/Pictures:/mnt/photos           # destination
+```
+
+#### Start SnapSort
+
 ```bash
 docker compose up -d
 ```
-Open [http://localhost:8080](http://localhost:8080) in your browser.
 
-### Quick Start (Development)
+This builds the container on first run (takes a few minutes) and starts it in the background. Open [http://localhost:8080](http://localhost:8080) in your browser.
+
+| Command | What it does |
+|---------|-------------|
+| `docker compose up -d` | Start SnapSort in the background |
+| `docker compose logs -f` | Follow live logs |
+| `docker compose down` | Stop SnapSort |
+| `docker compose up -d --build` | Rebuild after pulling updates |
+
+---
+
+### Option 2: Local Development
+
+Run the backend and frontend directly on your machine — useful if you want to contribute or customize.
+
+#### Prerequisites
+
+| Dependency | Version | Install |
+|-----------|---------|---------|
+| **Node.js** | 18+ | [nodejs.org](https://nodejs.org/) or `brew install node` |
+| **npm** | (bundled with Node.js) | — |
+| **Python** | 3.9+ | [python.org](https://www.python.org/) or `brew install python` |
+| **pip** | (bundled with Python) | — |
+| **exiftool** | latest (optional) | [exiftool.org](https://exiftool.org/) or `brew install exiftool` |
+
+#### Install & run
+
 ```bash
-# Install all dependencies
+# Clone the repo
+git clone https://github.com/Rediwed/SnapSort.git
+cd SnapSort
+
+# Install all dependencies (root + backend + frontend)
 npm install && npm install --prefix backend && npm install --prefix frontend
 pip install -r requirements.txt
 
-# Start both backend and frontend
+# Start both backend and frontend in dev mode
 npm run dev
 ```
-Open [http://localhost:5173](http://localhost:5173) — backend runs on port 4000, frontend on 5173 with proxy.
 
-### CLI Usage
+Open [http://localhost:5173](http://localhost:5173) — the backend runs on port 4000, and the frontend dev server on 5173 with an API proxy.
+
+---
+
+### Option 3: CLI Only
+
+If you just want the Python photo organizer without the web GUI:
+
 ```bash
+# Clone and install Python dependencies
+git clone https://github.com/Rediwed/SnapSort.git
+cd SnapSort
+pip install -r requirements.txt
+
+# Run the organizer
 python3 photo_organizer.py
 ```
-Choose your operation mode, set source/destination directories, and let SnapSort organize your photos.
 
-### Test Data
-Generate realistic test datasets to validate SnapSort's behavior:
+Choose your operation mode, set source/destination directories, and SnapSort will organize your photos from the terminal.
+
+---
+
+### Option 4: Unraid
+
+SnapSort includes a native Unraid Docker template:
+
+1. Copy `unraid/snapsort.xml` to `/boot/config/plugins/dockerMan/templates-user/`
+2. Go to **Docker → Add Container** → select the **SnapSort** template
+3. Configure your photo share path (e.g. `/mnt/user/photos`) and port (default: 8080)
+4. Click **Apply** — Unraid will pull/build the container and start it
+
+---
+
+### 🧪 Test Data
+
+Generate realistic test datasets to validate SnapSort's behavior without using your real photos:
+
 ```bash
 python3 generate_test_data.py
 ```
-This creates 5 source datasets simulating real scenarios (camera SD, downloads, phone backup, old desktop, external HDD) plus edge cases (corrupt files, zero-byte, wrong extensions, borderline dimensions). Then use the **🧪 Load Test Data** button in the GUI to run them all.
 
-### 📋 Requirements
-- Python 3.9+
-- [Pillow](https://pypi.org/project/Pillow/)
-- [piexif](https://pypi.org/project/piexif/)
-- [exiftool](https://exiftool.org/) (optional, fallback for non-JPEG/TIFF EXIF)
-- Node.js 18+ (for web GUI)
-
-### Unraid
-1. Copy `unraid/snapsort.xml` to `/boot/config/plugins/dockerMan/templates-user/`
-2. Go to Docker → Add Container → select SnapSort template
-3. Configure your photo share path and port
+This creates 5 source datasets simulating real-world scenarios (camera SD card, downloads folder, phone backup, old desktop, external HDD) plus edge cases (corrupt files, zero-byte, wrong extensions, borderline dimensions). Then use the **🧪 Load Test Data** button in the web GUI to run them all.
 
 ---
 
@@ -233,6 +349,7 @@ You can run multiple instances of SnapSort simultaneously to process different f
 - **Project management:** Support multi-drive projects with cross-drive analysis, manual evaluation, and unified reporting
 - **Automatic drive handling:** Notifications when drives finish, safe ejection, and auto-start on new drive connection
 - **Analyze-only mode:** Build CSV without copying files for manual review
+- **Customizable storage template:** User-defined destination folder structure using template variables (inspired by [Immich](https://immich.app/)), e.g. `{{y}}/{{y}}-{{MM}}/{{filename}}.{{ext}}`. Support variables for date/time (`{{y}}`, `{{MM}}`, `{{dd}}`), camera metadata (`{{make}}`, `{{model}}`), and file info (`{{filename}}`, `{{ext}}`, `{{filetype}}`)
 
 ---
 
