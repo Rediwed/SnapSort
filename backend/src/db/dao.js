@@ -164,6 +164,10 @@ function resolveDuplicate(db, id, resolution) {
   db.prepare('UPDATE duplicates SET resolution = ? WHERE id = ?').run(resolution, id);
 }
 
+function getDuplicate(db, id) {
+  return db.prepare('SELECT * FROM duplicates WHERE id = ?').get(id) || null;
+}
+
 function countDuplicates(db, { jobId, resolution } = {}) {
   let sql = 'SELECT COUNT(*) AS count FROM duplicates WHERE 1=1';
   const params = [];
@@ -294,7 +298,7 @@ module.exports = {
   createJob, getJob, listJobs, updateJobStatus, deleteJob,
   insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths,
   getPhotosByIds, updatePhotoOverride,
-  insertDuplicate, listDuplicates, resolveDuplicate, countDuplicates,
+  insertDuplicate, listDuplicates, resolveDuplicate, getDuplicate, countDuplicates,
   getAllSettings, getSetting, upsertSetting, bulkUpsertSettings,
   listProfiles, getProfile, createProfile, updateProfile, deleteProfile,
   getDashboardStats,

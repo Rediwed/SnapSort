@@ -172,6 +172,7 @@ class DeduplicationIndex:
         directory: str,
         supported_exts: Iterable[str],
         log_message_func=None,
+        max_workers: int = 1,
     ) -> int:
         """Seed the index with existing files from *directory*.
 
@@ -179,6 +180,10 @@ class DeduplicationIndex:
         carry the same metadata richness as records built during processing.
         This ensures the similarity scoring uses all available weight
         (resolution: 15%, date_taken: 5%).
+
+        When *max_workers* > 1 the hashing / metadata extraction is
+        parallelised using a ``ThreadPoolExecutor`` for significantly
+        faster seeding on SSDs.
 
         Returns the number of files successfully added.
         """
@@ -193,46 +198,68 @@ class DeduplicationIndex:
             extract_date_taken = None  # type: ignore[assignment]
 
         supported_lower = tuple(ext.lower() for ext in supported_exts)
-        added = 0
+
+        # Collect all candidate file paths first
+        all_paths = []
         for root, _, files in os.walk(directory):
             for filename in files:
-                if not filename.lower().endswith(supported_lower):
-                    continue
-                filepath = os.path.join(root, filename)
-                try:
-                    width = None
-                    height = None
-                    date_taken = None
+                if filename.lower().endswith(supported_lower):
+                    all_paths.append(os.path.join(root, filename))
 
-                    # Extract image dimensions
-                    if Image is not None:
-                        try:
-                            with Image.open(filepath) as img:
-                                width, height = img.size
-                        except Exception:
-                            pass
+        if not all_paths:
+            return 0
 
-                    # Extract date taken
-                    if extract_date_taken is not None:
-                        try:
-                            date_taken = extract_date_taken(filepath)
-                        except Exception:
-                            pass
+        def _seed_one(filepath):
+            """Build and return a seeded record for *filepath*, or None on error."""
+            try:
+                width = None
+                height = None
+                date_taken = None
 
-                    record = self.build_record(
-                        filepath,
-                        width=width,
-                        height=height,
-                        date_taken=date_taken,
-                        dest_path=filepath,
-                    )
-                    record["status"] = "seeded"
-                    record["final_path"] = filepath
+                if Image is not None:
+                    try:
+                        with Image.open(filepath) as img:
+                            width, height = img.size
+                    except Exception:
+                        pass
+
+                if extract_date_taken is not None:
+                    try:
+                        date_taken = extract_date_taken(filepath)
+                    except Exception:
+                        pass
+
+                record = self.build_record(
+                    filepath,
+                    width=width,
+                    height=height,
+                    date_taken=date_taken,
+                    dest_path=filepath,
+                )
+                record["status"] = "seeded"
+                record["final_path"] = filepath
+                return record
+            except Exception as exc:
+                if log_message_func:
+                    log_message_func(f"Dedup seed skipped {filepath}: {exc}")
+                return None
+
+        added = 0
+
+        if max_workers > 1 and len(all_paths) > 1:
+            import concurrent.futures as _cf
+            with _cf.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                for record in pool.map(_seed_one, all_paths):
+                    if record is not None:
+                        self.add_record(record)
+                        added += 1
+        else:
+            for filepath in all_paths:
+                record = _seed_one(filepath)
+                if record is not None:
                     self.add_record(record)
                     added += 1
-                except Exception as exc:  # pragma: no cover - best effort only
-                    if log_message_func:
-                        log_message_func(f"Dedup seed skipped {filepath}: {exc}")
+
         return added
 
     # ------------------------------------------------------------------

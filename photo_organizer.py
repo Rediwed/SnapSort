@@ -9,6 +9,8 @@ import sys
 import time
 import csv
 import gc
+import itertools
+import threading
 from datetime import datetime
 from photo_utils import copy_photo_with_metadata, extract_date_taken
 from logging_utils import log_message, log_csv, ensure_csv_config
@@ -25,9 +27,13 @@ MIN_FILESIZE = 0
 SUPPORTED_EXTENSIONS = (
     ".jpg", ".jpeg", ".png", ".cr2", ".nef", ".arw", ".tif", ".tiff", ".rw2", ".orf", ".dng", ".heic", ".heif"
 )
-SYSTEM_FOLDERS = [
-    "windows", "program files", "appdata", "cache", "thumbnails", "tmp", "temp", "icons", "banners", "ads", "browser"
-]
+SYSTEM_FOLDERS = frozenset({
+    "windows", "program files", "program files (x86)", "appdata",
+    "cache", "thumbnails", "tmp", "temp",
+    "icons", "banners", "ads", "browser",
+    "system32", "recycler", "$recycle.bin",
+    "system volume information", "config.msi", "msocache",
+})
 ENABLE_CSV_LOG = False
 CSV_LOG_FILE = LOG_FILE.replace('.log', '.csv') if LOG_FILE else "photo_organizer.csv"
 FLUSH_INTERVAL = 1000
@@ -108,6 +114,47 @@ def load_config_from_csv(csv_path):
     if not MIN_FILESIZE or MIN_FILESIZE < 1:
         MIN_FILESIZE = int(input("Enter minimum file size in bytes (default 51200 for 50KB): ").strip() or "51200")
 
+
+class Spinner:
+    """Animated CLI spinner for long-running initialization phases."""
+
+    _FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+    def __init__(self, message="Working"):
+        self._message = message
+        self._stop_event = threading.Event()
+        self._thread = None
+
+    def start(self):
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+        self._thread.start()
+
+    def _spin(self):
+        cycle = itertools.cycle(self._FRAMES)
+        while not self._stop_event.is_set():
+            frame = next(cycle)
+            print(f"\r{frame} {self._message}...", end="", flush=True)
+            self._stop_event.wait(0.08)
+        # Clear the spinner line
+        print("\r" + " " * (len(self._message) + 10) + "\r", end="", flush=True)
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join()
+
+    def update(self, message):
+        self._message = message
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *_):
+        self.stop()
+
+
 def print_progress(processed, total, copied, skipped, errors, start_time, scan_complete=None):
     """Print the progress of the photo organizing process."""
     elapsed = time.time() - start_time
@@ -146,8 +193,6 @@ def scan_and_organize_photos(processed_set=None):
     errors = 0
     end_reason = "Completed successfully."
 
-    print("Scanning and processing files...", flush=True)
-
     total_files = None
     processed_files = 0
     flush_counter = 0
@@ -172,9 +217,17 @@ def scan_and_organize_photos(processed_set=None):
         log_message(end_reason)
         return
 
+    # ── Initialization with animated spinner ────────────────────────
+    spinner = Spinner("Indexing destination for deduplication")
+    spinner.start()
+
     seeded = dedup_index.seed_from_directory(DEST_DIR, SUPPORTED_EXTENSIONS, log_message)
     if seeded:
         log_message(f"Dedup index seeded with {seeded} existing files from destination.")
+
+    spinner.update(f"Scanning source directory")
+    spinner.stop()
+    print(f"Indexed {seeded} existing files. Scanning source...", flush=True)
 
     for root, dirs, files in os.walk(SOURCE_DIR):
         for file in files:
@@ -350,59 +403,23 @@ def file_hash(filepath, blocksize=65536):
         return None
 
 def file_hash_fast(filepath, max_bytes=8192):
-    """Compute a fast partial hash for large files (optimized for SSDs)."""
-    import hashlib
-    import mmap
-    try:
-        file_size = os.path.getsize(filepath)
-        
-        # For small files, read everything
-        if file_size <= max_bytes:
-            with open(filepath, 'rb') as f:
-                return hashlib.sha256(f.read()).hexdigest()
-        
-        # For larger files, use memory mapping with sampling
-        with open(filepath, 'rb') as f:
-            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-                hasher = hashlib.sha256()
-                
-                # Sample beginning, middle, and end for better uniqueness
-                chunk_size = max_bytes // 3
-                
-                # Beginning
-                hasher.update(mm[:chunk_size])
-                
-                # Middle (if file is large enough)
-                if file_size > chunk_size * 6:
-                    mid_start = (file_size // 2) - (chunk_size // 2)
-                    hasher.update(mm[mid_start:mid_start + chunk_size])
-                
-                # End (if file is large enough)
-                if file_size > chunk_size * 2:
-                    hasher.update(mm[-chunk_size:])
-                
-                return hasher.hexdigest()
-                
-    except Exception:
-        return None
+    """Compute a fast partial hash for large files (optimized for SSDs).
+
+    Delegates to ``dedup_utils.compute_partial_hash`` so there is a single
+    implementation of the begin+middle+end sampling algorithm.
+    """
+    from dedup_utils import compute_partial_hash
+    return compute_partial_hash(filepath, max_bytes)
 
 
 # ── Shared processing helpers (used by json_mode, parallel_organizer, CLI) ──
-
-
-# Directories that os.walk should never descend into.
-_SKIP_DIRS = frozenset({
-    'system32', 'windows', 'program files', 'program files (x86)',
-    'appdata', 'cache', 'temp', 'tmp', 'recycler', '$recycle.bin',
-    'system volume information', 'config.msi', 'msocache',
-})
 
 
 def optimized_directory_scan(source_dir, supported_extensions):
     """Fast directory scan that prunes system dirs from os.walk in-place.
 
     Returns a flat list of absolute file paths whose extension matches
-    *supported_extensions*.  Directories listed in ``_SKIP_DIRS`` are
+    *supported_extensions*.  Directories listed in ``SYSTEM_FOLDERS`` are
     never entered — the check modifies *dirs* in-place so ``os.walk``
     does not recurse into them.
     """
@@ -411,10 +428,10 @@ def optimized_directory_scan(source_dir, supported_extensions):
 
     for root, dirs, filenames in os.walk(source_dir):
         root_lower = root.lower()
-        if any(skip in root_lower for skip in _SKIP_DIRS):
+        if any(skip in root_lower for skip in SYSTEM_FOLDERS):
             continue
         # Prune child dirs so os.walk will not descend into them.
-        dirs[:] = [d for d in dirs if d.lower() not in _SKIP_DIRS]
+        dirs[:] = [d for d in dirs if d.lower() not in SYSTEM_FOLDERS]
         for fname in filenames:
             if fname.lower().endswith(supported_lower):
                 files.append(os.path.join(root, fname))
@@ -423,7 +440,7 @@ def optimized_directory_scan(source_dir, supported_extensions):
 
 def process_single_file(src_path, dest_dir, min_width, min_height,
                         min_filesize, supported_extensions, system_folders,
-                        hash_func, dedup_index):
+                        hash_func, dedup_index, copy_semaphore=None):
     """Process one photo file — extract metadata, copy, and return a result dict.
 
     The result dict always contains:
@@ -452,6 +469,7 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
         "bytes_copied": 0,
         "duplicate_of": None,
         "similarity": None,
+        "hash": None,
     }
 
     # Capture log messages so we can extract skip reasons.
@@ -466,6 +484,7 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
             supported_extensions, system_folders, False,
             hash_func, log_csv, _log,
             dedup_index=dedup_index,
+            copy_semaphore=copy_semaphore,
         )
         result["status"] = status
         result["dest_path"] = dest_path
@@ -541,6 +560,12 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
     except Exception:
         pass
 
+    # File hash — used by the backend to populate the photos.hash column
+    try:
+        result["hash"] = hash_func(src_path)
+    except Exception:
+        pass
+
     return result
 
 def json_mode():
@@ -605,11 +630,13 @@ def json_mode():
     max_workers = int(cfg.get("max_worker_threads", 4))
     batch_size = int(cfg.get("batch_size", 25))
     concurrent_copies = int(cfg.get("concurrent_copies", 2))
+    parallel_hash_workers = int(cfg.get("parallel_hash_workers", 4))
     hash_bytes_cfg = int(cfg.get("hash_bytes", 8192))
 
     # Override fast-hash sample size if provided
-    global FAST_HASH_BYTES
+    global FAST_HASH_BYTES, ENABLE_FAST_HASH
     FAST_HASH_BYTES = hash_bytes_cfg
+    ENABLE_FAST_HASH = cfg.get("enable_fast_hash", "true") == "true"
 
     # Override dedup thresholds from settings
     global DEDUP_STRICT_THRESHOLD, DEDUP_LOG_THRESHOLD
@@ -632,7 +659,7 @@ def json_mode():
     if use_threading:
         try:
             import concurrent.futures as _cf
-            emit({"event": "progress", "message": f"Multi-threading enabled: {max_workers} workers, batch_size={batch_size}"})
+            emit({"event": "progress", "message": f"Multi-threading enabled: {max_workers} workers, batch_size={batch_size}, concurrent_copies={concurrent_copies}"})
         except ImportError:
             use_threading = False
             emit({"event": "progress", "message": "concurrent.futures unavailable, falling back to sequential"})
@@ -653,15 +680,26 @@ def json_mode():
     # ── Dedup index (thread-safe thanks to internal locking) ────────
     # Use the same hash_bytes for both the dedup index and file_hash_fast
     # so that seeded hashes match the hashes computed during processing.
+    #
+    # In JSON mode we suppress file logging — all events go through the
+    # JSON protocol to the Node.js backend instead.
+    def _noop_log(_msg):
+        pass
+
     dedup_index = DeduplicationIndex(
         strict_threshold=DEDUP_STRICT_THRESHOLD,
         log_threshold=DEDUP_LOG_THRESHOLD,
         partial_hash_bytes=hash_bytes_cfg,
     )
 
-    seeded = dedup_index.seed_from_directory(DEST_DIR, SUPPORTED_EXTENSIONS, log_message)
+    # Use parallel hashing for seeding when multi-threading is enabled
+    seed_workers = parallel_hash_workers if use_threading and not sequential else 1
+    seeded = dedup_index.seed_from_directory(
+        DEST_DIR, SUPPORTED_EXTENSIONS, _noop_log,
+        max_workers=seed_workers,
+    )
     if seeded:
-        emit({"event": "progress", "message": f"Seeded dedup index with {seeded} existing files"})
+        emit({"event": "progress", "message": f"Seeded dedup index with {seeded} existing files (workers={seed_workers})"})
 
     # ── Phase 1: fast directory scan (prunes system dirs) ───────────
     all_files = optimized_directory_scan(SOURCE_DIR, SUPPORTED_EXTENSIONS)
@@ -709,6 +747,7 @@ def json_mode():
                 "dpi": r["dpi"],
                 "date_taken": r["date_taken"],
                 "skip_reason": r["skip_reason"],
+                "hash": r["hash"],
             })
 
             # Emit duplicate event when dedup info is available
@@ -729,6 +768,9 @@ def json_mode():
                 "total_files": total_files,
             })
 
+    # Create a copy semaphore to limit concurrent I/O operations
+    _copy_semaphore = _threading.Semaphore(concurrent_copies) if use_threading else None
+
     # Common args for process_single_file
     _common = dict(
         dest_dir=DEST_DIR,
@@ -739,6 +781,7 @@ def json_mode():
         system_folders=SYSTEM_FOLDERS,
         hash_func=hash_func,
         dedup_index=dedup_index,
+        copy_semaphore=_copy_semaphore,
     )
 
     # ── Phase 2: process files ──────────────────────────────────────
@@ -800,8 +843,13 @@ if __name__ == "__main__":
         missing_deps.append("piexif")
 
     if missing_deps:
-        print("Missing required Python packages: " + ", ".join(missing_deps))
-        print("Install them with: python3 -m pip install -r requirements.txt")
+        msg = "Missing required Python packages: " + ", ".join(missing_deps)
+        if "--json-config" in sys.argv:
+            import json as _json
+            print(_json.dumps({"event": "error", "message": msg}), flush=True)
+        else:
+            print(msg)
+            print("Install them with: python3 -m pip install -r requirements.txt")
         sys.exit(1)
 
     # JSON mode — used by the Node.js backend

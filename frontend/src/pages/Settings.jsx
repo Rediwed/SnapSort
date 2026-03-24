@@ -12,7 +12,6 @@ const settingsMeta = [
   { key: 'min_filesize',           label: 'Min File Size (bytes)',    type: 'number' },
   { key: 'dedup_strict_threshold', label: 'Dedup Strict Threshold (%)', type: 'number' },
   { key: 'dedup_log_threshold',    label: 'Dedup Log Threshold (%)',    type: 'number' },
-  { key: 'enable_csv_log',         label: 'Enable CSV Logging',        type: 'toggle' },
 ];
 
 export default function Settings() {

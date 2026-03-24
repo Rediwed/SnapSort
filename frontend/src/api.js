@@ -67,6 +67,7 @@ export const fetchFilesystemRoots = () => request('/filesystem/roots');
 
 /* ---- Drives ---- */
 export const fetchDrives = () => request('/drives');
+export const prescanDrive = (path) => request('/drives/prescan', { method: 'POST', body: JSON.stringify({ path }) });
 
 /* ---- Performance Profiles ---- */
 export const fetchProfiles = () => request('/profiles');

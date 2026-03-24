@@ -80,7 +80,7 @@ def ensure_csv_config():
         f"MIN_HEIGHT={MIN_HEIGHT}",
         f"MIN_FILESIZE={MIN_FILESIZE}",
         f"SUPPORTED_EXTENSIONS={','.join(SUPPORTED_EXTENSIONS)}",
-        f"SYSTEM_FOLDERS={','.join(SYSTEM_FOLDERS)}"
+        f"SYSTEM_FOLDERS={','.join(sorted(SYSTEM_FOLDERS))}"
     ]
     config_row = ["CONFIG", ";".join(config_items)]
 

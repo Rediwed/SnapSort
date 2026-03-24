@@ -48,6 +48,7 @@ function startJob(db, job) {
     hash_bytes: profile ? String(profile.hash_bytes) : (settings.fast_hash_bytes || settings.hash_bytes || '8192'),
     concurrent_copies: profile ? String(profile.concurrent_copies) : (settings.concurrent_copies || '2'),
     sequential_processing: profile ? (profile.sequential_processing ? 'true' : 'false') : (settings.sequential_processing || 'false'),
+    enable_fast_hash: settings.enable_fast_hash || 'true',
   };
 
   const config = JSON.stringify({
@@ -83,6 +84,9 @@ function startJob(db, job) {
   photoIdMaps.set(job.id, new Map());
   currentFiles.set(job.id, { currentFile: null, timestamp: Date.now() });
 
+  /* Track whether the Python process sent an error event with a descriptive message */
+  let pythonErrorMessage = null;
+
   /* Feed config via stdin */
   child.stdin.write(config);
   child.stdin.end();
@@ -97,6 +101,10 @@ function startJob(db, job) {
       if (!line.trim()) continue;
       try {
         const evt = JSON.parse(line);
+        /* Capture descriptive error message before the close handler fires */
+        if (evt.event === 'error' && evt.message) {
+          pythonErrorMessage = evt.message;
+        }
         handleEvent(db, job.id, evt);
       } catch {
         /* not JSON — ignore (plain log output) */
@@ -108,15 +116,35 @@ function startJob(db, job) {
     console.error(`[job ${job.id}] stderr: ${chunk}`);
   });
 
+  child.on('error', (err) => {
+    console.error(`[job ${job.id}] Failed to start Python process: ${err.message}`);
+    activeProcesses.delete(job.id);
+    photoIdMaps.delete(job.id);
+    currentFiles.delete(job.id);
+    updateJobStatus(db, job.id, 'error', {
+      error_message: `Failed to start Python process: ${err.message}`,
+      finished_at: new Date().toISOString(),
+    });
+  });
+
   child.on('close', (code) => {
     activeProcesses.delete(job.id);
     photoIdMaps.delete(job.id);
     currentFiles.delete(job.id);
-    const status = code === 0 ? 'done' : 'error';
-    updateJobStatus(db, job.id, status, {
-      finished_at: new Date().toISOString(),
-      ...(code !== 0 ? { error_message: `Process exited with code ${code}` } : {}),
-    });
+    if (code === 0) {
+      /* Only mark done if the Python error handler didn't already set an error */
+      if (!pythonErrorMessage) {
+        updateJobStatus(db, job.id, 'done', { finished_at: new Date().toISOString() });
+      }
+    } else {
+      /* Preserve the descriptive error from Python's error event if we have one */
+      const message = pythonErrorMessage || `Process exited with code ${code}`;
+      console.error(`[job ${job.id}] Python process exited with code ${code}: ${message}`);
+      updateJobStatus(db, job.id, 'error', {
+        error_message: message,
+        finished_at: new Date().toISOString(),
+      });
+    }
   });
 }
 
@@ -226,6 +254,7 @@ function handleEvent(db, jobId, evt) {
       break;
 
     case 'error':
+      console.error(`[job ${jobId}] Python error: ${evt.message}`);
       updateJobStatus(db, jobId, 'error', {
         error_message: evt.message,
         finished_at: new Date().toISOString(),

@@ -177,8 +177,6 @@ export default function Jobs() {
           <label>Mode</label>
           <select className="form-select" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
             <option value="normal">Normal — scan & copy all</option>
-            <option value="manual">Manual — CSV marked files only</option>
-            <option value="resume">Resume — skip already processed</option>
           </select>
         </div>
         <div className="form-group">

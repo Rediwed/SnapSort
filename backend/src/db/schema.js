@@ -175,7 +175,6 @@ function initDb(dbPath) {
       dedup_log_threshold: '70',
       enable_fast_hash: 'true',
       fast_hash_bytes: '8192',
-      enable_csv_log: 'false',
       /* Performance defaults */
       enable_multithreading: 'true',
       max_worker_threads: '4',

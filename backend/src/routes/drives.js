@@ -194,4 +194,113 @@ function detectLinuxDrives() {
   return drives;
 }
 
+/* ================================================================== */
+/*  POST /api/drives/prescan — quick file count & size estimate        */
+/* ================================================================== */
+
+const IMAGE_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.cr2', '.nef', '.arw', '.tif', '.tiff',
+  '.rw2', '.orf', '.dng', '.heic', '.heif',
+]);
+
+/**
+ * POST /api/drives/prescan
+ * Body: { path: "/Volumes/MyDrive" }
+ *
+ * Walks the directory tree and returns counts / total size of image files
+ * vs non-image files, plus a sample of top-level folders found.
+ */
+router.post('/prescan', (req, res) => {
+  const { path: scanPath } = req.body;
+  if (!scanPath) return res.status(400).json({ error: 'path is required' });
+
+  try {
+    if (!fs.existsSync(scanPath) || !fs.statSync(scanPath).isDirectory()) {
+      return res.status(400).json({ error: 'Path does not exist or is not a directory' });
+    }
+
+    const result = prescanDirectory(scanPath);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const pathModule = require('path');
+
+function prescanDirectory(rootPath) {
+  let imageCount = 0;
+  let imageBytes = 0;
+  let otherCount = 0;
+  let otherBytes = 0;
+  const topFolders = [];
+
+  /* Collect top-level folder listing */
+  try {
+    const entries = fs.readdirSync(rootPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue; // skip hidden
+      if (entry.isDirectory()) {
+        topFolders.push(entry.name);
+      }
+    }
+  } catch { /* permission error */ }
+
+  /* Recursive walk with a depth limit to keep it fast */
+  const MAX_FILES = 500000; // safety cap
+  let totalScanned = 0;
+  let truncated = false;
+
+  function walk(dir) {
+    if (totalScanned >= MAX_FILES) { truncated = true; return; }
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch { return; } // permission denied
+
+    for (const entry of entries) {
+      if (totalScanned >= MAX_FILES) { truncated = true; return; }
+      if (entry.name.startsWith('.')) continue;
+
+      const fullPath = pathModule.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        /* Skip system folders */
+        const lower = entry.name.toLowerCase();
+        if (['windows', 'program files', 'program files (x86)', 'appdata',
+             'cache', 'thumbnails', 'tmp', 'temp', '$recycle.bin',
+             'system volume information', 'node_modules'].includes(lower)) continue;
+        walk(fullPath);
+      } else if (entry.isFile()) {
+        totalScanned++;
+        const ext = pathModule.extname(entry.name).toLowerCase();
+        let size = 0;
+        try { size = fs.statSync(fullPath).size; } catch { /* skip */ }
+
+        if (IMAGE_EXTENSIONS.has(ext)) {
+          imageCount++;
+          imageBytes += size;
+        } else {
+          otherCount++;
+          otherBytes += size;
+        }
+      }
+    }
+  }
+
+  walk(rootPath);
+
+  return {
+    path: rootPath,
+    imageCount,
+    imageBytes,
+    otherCount,
+    otherBytes,
+    totalFiles: imageCount + otherCount,
+    totalBytes: imageBytes + otherBytes,
+    topFolders,
+    truncated,
+  };
+}
+
 module.exports = router;

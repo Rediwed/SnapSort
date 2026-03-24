@@ -353,6 +353,10 @@ export default function Photos() {
         ) : isDupTab ? (
           /* ── Duplicate comparison cards ────────────────────────── */
           <div className="dup-card-list">
+            {/* Source-safety notice */}
+            <div className="dup-notice">
+              <strong>ℹ️ Note:</strong> Resolutions apply to the <em>destination</em> only — source files are never modified. <strong>Overwrite</strong> copies the source over the matched destination file. <strong>Keep Both</strong> copies the source alongside it with a unique name. <strong>Skip</strong> leaves the destination as-is.
+            </div>
             {/* Select-all row */}
             <label className="dup-select-all">
               <input

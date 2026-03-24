@@ -23,6 +23,17 @@ const profileRoutes = require('./routes/profiles');
 const PORT = process.env.PORT || 4000;
 const app = express();
 
+/* Read version from VERSION file at startup */
+const APP_VERSION = (() => {
+  try {
+    return fs.readFileSync(path.join(__dirname, '..', '..', 'VERSION'), 'utf8').trim();
+  } catch {
+    return 'unknown';
+  }
+})();
+
+const fs = require('fs');
+
 /* ------------------------------------------------------------------ */
 /*  Middleware                                                         */
 /* ------------------------------------------------------------------ */
@@ -55,14 +66,13 @@ app.use('/api/profiles', profileRoutes);
 
 /* Health check */
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', version: '1.0.0' });
+  res.json({ status: 'ok', version: APP_VERSION });
 });
 
 /* ------------------------------------------------------------------ */
 /*  Static frontend (production)                                       */
 /* ------------------------------------------------------------------ */
 const publicDir = path.join(__dirname, '..', 'public');
-const fs = require('fs');
 if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir));
   /* SPA fallback — send index.html for any non-API route */

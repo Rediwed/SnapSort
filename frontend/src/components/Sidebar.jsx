@@ -1,8 +1,11 @@
 import { NavLink } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { fetchHealth } from '../api';
 import ActiveJobIndicator from './ActiveJobIndicator';
 
 const links = [
   { to: '/dashboard',  icon: '◉', label: 'Dashboard' },
+  { to: '/drives',     icon: '💾', label: 'Drives' },
   { to: '/jobs',       icon: '▶', label: 'Jobs' },
   { to: '/photos',     icon: '▣', label: 'Photos' },
   { to: '/benchmarks', icon: '⏱', label: 'Benchmarks' },
@@ -10,6 +13,13 @@ const links = [
 ];
 
 export default function Sidebar({ open, onClose }) {
+  const [version, setVersion] = useState(null);
+  useEffect(() => {
+    fetchHealth()
+      .then((data) => setVersion(data.version))
+      .catch(() => {});
+  }, []);
+
   return (
     <>
       {/* Desktop sidebar — always visible on wide screens */}
@@ -17,7 +27,7 @@ export default function Sidebar({ open, onClose }) {
         <div className="sidebar-logo">
           <div className="logo-icon">S</div>
           <h1>SnapSort</h1>
-          <span className="version">v1.0</span>
+          <span className="version">{version ? `v${version}` : ''}</span>
         </div>
 
         <nav className="sidebar-nav">

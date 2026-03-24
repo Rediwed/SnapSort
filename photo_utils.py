@@ -138,6 +138,7 @@ def copy_photo_with_metadata(
     log_message_func,
     force_copy=False,
     dedup_index=None,
+    copy_semaphore=None,
 ):
     """Copy a photo to the destination directory with metadata extraction and renaming.
 
@@ -333,7 +334,13 @@ def copy_photo_with_metadata(
 
     try:
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-        shutil.copy2(src_path, dest_path)
+        if copy_semaphore:
+            copy_semaphore.acquire()
+        try:
+            shutil.copy2(src_path, dest_path)
+        finally:
+            if copy_semaphore:
+                copy_semaphore.release()
         file_size = os.path.getsize(dest_path)
         log_message_func(f"Copied: {src_path} -> {dest_path}")
         if enable_csv_log:

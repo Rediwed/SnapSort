@@ -32,17 +32,18 @@ SnapSort automatically organizes your images into a clean folder structure based
 The filtering system ensures you only get actual photos, not system icons, application images or thumbnails. It automatically skips system folders and filters out small images that are likely thumbnails or icons. SnapSort defaults to filtering out images less than 600×600 pixels or 50 KB, but allows you to flexibly choose these values. If enabled, SnapSort will save a CSV file that allows you to manually review its decision on a file-by-file basis, letting you force-process images that were misclassified.
 
 **Supported image formats:**
-SnapSort supports all image formats — just add the extension to the list before running! Default formats:
+SnapSort supports common photo and RAW formats out of the box. You can add additional extensions, but note that dimension-based filtering and enhanced deduplication (resolution, EXIF date matching) require Pillow support for the format. Formats that Pillow cannot open will still be processed using hash-based and metadata-based (file size, filename, mtime) duplicate comparison. Default formats:
 - `.jpg`, `.jpeg`, `.png`, `.cr2`, `.nef`, `.arw`, `.tif`, `.tiff`, `.rw2`, `.orf`, `.dng`, `.heic`, `.heif`
 
 For EXIF extraction, it uses `piexif`/Pillow for JPEG/TIFF files and falls back to `exiftool` for other formats.
 
 ### 🔍 Deduplication Engine
 SnapSort includes a multi-strategy deduplication system:
-- **Hash-based**: SHA256 (full or fast partial-hash of first N bytes) to detect exact duplicates
+- **Hash-based**: SHA256 (full or fast partial-hash sampling begin+middle+end) to detect exact duplicates — a single implementation shared across seeding, dedup scoring, and file-exists checks
 - **Metadata-based**: Compares dimensions, date taken, and file size for near-duplicate detection
 - **Configurable thresholds**: Strict threshold (auto-skip) and log threshold (flag for review)
 - **Destination seeding**: Pre-indexes existing files in the destination to avoid re-copying
+- **Actionable resolutions** *(Web GUI)*: Duplicate pairs can be resolved directly from the UI — **Skip** leaves the destination as-is, **Overwrite** copies the source over the matched destination file, **Keep Both** copies the source alongside the match with a unique filename. All operations write to the destination only; source files are never modified
 
 <p align="center">
   <img src="docs/screenshots/snapsort-duplicates.png" width="680" alt="SnapSort Duplicates">
@@ -50,9 +51,8 @@ SnapSort includes a multi-strategy deduplication system:
 
 ### ⏳ Progress Tracking
 Real-time feedback during operation:
-- Animated spinner during initialization
-- Inline progress showing files processed, copied, skipped, errors, and ETA
-- Comprehensive log file recording every action with explanations
+- **CLI**: Animated spinner during initialization (destination indexing and source scanning), inline progress with files processed, copied, skipped, errors, and ETA, plus a comprehensive log file recording every action
+- **Web GUI**: Live progress bars per job, real-time file counter updates (polled every 500 ms), and an always-visible sidebar indicator showing the currently processing file
 
 ### 🌐 Web GUI
 A full-stack web interface for managing photo organization visually:
@@ -63,8 +63,7 @@ A full-stack web interface for managing photo organization visually:
 <p align="center">
   <img src="docs/screenshots/snapsort-jobs.png" width="680" alt="SnapSort Jobs">
 </p>
-- **Photos** — browse all processed photos with status filtering (copied/skipped/error), skip reasons, dimensions, date taken
-- **Duplicates** — review flagged duplicate pairs
+- **Photos** — browse all processed photos with status filtering (copied/skipped/error/duplicate), skip reasons, dimensions, date taken, hover image previews, and an integrated **Duplicates** tab for reviewing flagged duplicate pairs with side-by-side comparison, metadata diffs, and per-duplicate resolution actions
 - **Benchmarks** — test real storage I/O on your source & destination folders, identify the bottleneck, and get a recommended performance profile (see below)
 - **Settings** — configure filter, quality, performance, and format defaults with responsive grid layout
 - **File Picker** — server-side directory browser with external drive detection
@@ -99,14 +98,16 @@ SnapSort ships with 7 built-in performance profiles tuned for different storage 
 | USB External | 2 | 15 | 2048 | 1 | Single | Sequential |
 | Default | 4 | 25 | 4096 | 2 | Multi | Parallel |
 
-Profiles can be applied globally from Settings, per-job during job creation, or automatically from benchmark results. You can also create custom profiles.
+Profiles can be applied globally from Settings, per-job during job creation, or automatically from benchmark results. You can also adjust individual performance parameters to create your own configuration.
+
+> **Note:** Performance profiles, storage benchmarks, and drive detection are Web GUI features. The CLI uses direct configuration constants. Adding `--profile` and `--benchmark` CLI flags is on the roadmap.
 
 ### �️ Source Safety Guarantee
 SnapSort will **never** write to, modify, rename, move, or delete any file or directory in your source locations. Source drives and directories are treated as **strictly read-only** at every layer of the application:
 
 - **Python engine**: Every copy operation verifies the destination is not inside the source directory before writing. A `RuntimeError` is raised if violated.
 - **Node.js backend**: A dedicated `sourceGuard` module checks every destructive file operation against all known source directories. Job creation is rejected if the source and destination directories overlap in any direction.
-- **API layer**: No endpoint exists that can modify or delete source files. The only file operations SnapSort performs on disk are writing to the destination directory and cleaning up its own output.
+- **API layer**: No endpoint exists that can modify or delete source files. The only file operations SnapSort performs on disk are writing to the destination directory and cleaning up its own output. Duplicate resolutions (Overwrite, Keep Both) are guarded by `assertNotInSource()` before any write.
 - **Overlap protection**: Job creation is rejected if source and destination paths overlap in any direction (same directory, destination inside source, or source inside destination). Enforced at the Python engine, Node.js backend, and React frontend.
 
 This is SnapSort's **#1 invariant** — enforced by defense-in-depth across the full stack.
@@ -129,7 +130,8 @@ SnapSort/
 ├── photo_utils.py             # Image processing, EXIF, copy logic
 ├── dedup_utils.py             # Deduplication index & matching
 ├── path_utils.py              # Destination path construction
-├── logging_utils.py           # CSV/log utilities
+├── logging_utils.py           # CSV/log utilities (CLI)
+├── VERSION                    # Single source of truth for version (read by Python, Node.js, and frontend)
 ├── backend/                   # Node.js Express API
 │   └── src/
 │       ├── index.js           # Express server (serves API + SPA)
@@ -139,9 +141,10 @@ SnapSort/
 │       └── services/          # Python bridge (spawns organizer, streams events)
 ├── frontend/                  # React 18 + Vite SPA
 │   └── src/
-│       ├── pages/             # Dashboard, Jobs, Photos, Duplicates, etc.
+│       ├── pages/             # Dashboard, Jobs, Photos (incl. Duplicates tab), Benchmarks, Settings
 │       ├── components/        # Modal, DataTable, FilePicker, Badge, StatCard, Sidebar, etc.
-│       └── styles/            # Custom CSS dark theme
+│       └── index.css          # Custom CSS dark theme
+├── scripts/                   # Dev utilities (DB seeding, cleanup)
 ├── Dockerfile                 # Unified multi-stage build
 ├── docker-compose.yml         # Single-service deployment
 ├── unraid/                    # Unraid Docker template
@@ -159,17 +162,36 @@ SnapSort/
 
 ## 🔧 Workflow Management
 
-### 📝 CSV Logging and Configuration
-SnapSort generates detailed CSV logs that serve multiple purposes beyond simple record-keeping. These files contain complete configuration information embedded within them, making each log self-contained and portable. Config and filtering heuristics are saved in the CSV as a single cell in the second row, making it robust and spreadsheet-friendly.
+### 📝 CSV Logging and Configuration *(CLI only)*
+The CLI generates detailed CSV logs that serve multiple purposes beyond simple record-keeping. These files contain complete configuration information embedded within them, making each log self-contained and portable. Config and filtering heuristics are saved in the CSV as a single cell in the second row, making it robust and spreadsheet-friendly.
 
 When running in manual or resume mode, the script automatically reads all config values from the CSV and applies them, ensuring consistency across sessions.
+
+> The Web GUI does not use CSV logging — all photo metadata, skip reasons, and duplicate information are stored in the SQLite database and accessible through the Photos page.
+
+### 📂 Log Files *(CLI only)*
+The CLI writes a detailed `photo_organizer.log` file recording every action with timestamps. The log file name can be customised at startup. In JSON mode (used by the Web GUI), file logging is suppressed — all events are streamed via the JSON protocol to the Node.js backend instead.
 
 ### 🔄 Operation Modes
 SnapSort offers three distinct operation modes:
 
 - **Normal Copy:** Scans and processes all files according to current heuristics
-- **Manual Copy:** Only copies files explicitly marked in the CSV (`copy_anyway == yes`), with destination paths reconstructed automatically
-- **Resume Copy:** Continues a previous operation by skipping files already listed in the CSV, reading and applying all config and heuristics from the existing file
+- **Manual Copy** *(CLI only)*: Only copies files explicitly marked in the CSV (`copy_anyway == yes`), with destination paths reconstructed automatically
+- **Resume Copy** *(CLI only)*: Continues a previous operation by skipping files already listed in the CSV, reading and applying all config and heuristics from the existing file
+
+> The Web GUI currently operates in Normal mode only. The equivalent of Manual Copy is available via the "Copy Anyway" override feature on the Photos page, where you can select skipped photos and force-copy them. Resume and Manual CSV-based modes are CLI-specific workflows.
+
+### 🔍 Duplicate Handling: CLI vs Web GUI
+
+| Capability | CLI | Web GUI |
+|---|---|---|
+| Auto-skip strict duplicates | ✅ | ✅ |
+| Log potential duplicates | ✅ (log file + CSV) | ✅ (database) |
+| Interactive duplicate resolution | — | ✅ (Skip / Overwrite / Keep Both per pair) |
+| Resolutions apply to files | — | ✅ (copies to destination, never modifies source) |
+| Bulk duplicate resolution | — | ✅ |
+| Override skipped files | ✅ (CSV `copy_anyway` column) | ✅ (Photos page override action) |
+| Per-photo file hash stored | — | ✅ (SHA-256 partial or full, stored in DB) |
 
 ---
 
@@ -326,9 +348,10 @@ This creates 5 source datasets simulating real-world scenarios (camera SD card, 
 ## 🎛️ Customization
 
 - **Filtering heuristics**: Adjust minimum size, resolution, or system folders via the GUI Settings page or by editing constants in `photo_organizer.py`
-- **Supported formats**: Add or remove extensions in the `SUPPORTED_EXTENSIONS` tuple
+- **Supported formats**: Add or remove extensions via the GUI Settings page or in the `SUPPORTED_EXTENSIONS` tuple in `photo_organizer.py`
 - **Deduplication**: Configure strict/log thresholds and partial hash size
 - **Job management**: The GUI supports creating multiple jobs with different source/destination pairs, each with independent filter settings
+- **System/application folder filtering**: A unified set of auto-skipped system folders (e.g. `windows`, `appdata`, `cache`, `$recycle.bin`, `system volume information`, `temp`) is used for both directory-tree pruning during scanning and per-file path filtering during copying. The set is defined in `photo_organizer.py` and is currently non-configurable. A configurable filtering system for both CLI and GUI is on the roadmap
 
 ---
 
@@ -345,15 +368,29 @@ You can run multiple instances of SnapSort simultaneously to process different f
 
 ## 🔮 Future Development
 
+- **Manual & Resume modes in Web GUI:** Bring CSV-based Manual Copy and Resume Copy workflows to the web interface
+- **CLI `--profile` flag:** Apply named performance profiles from the command line
+- **CLI `--benchmark` flag:** Run storage I/O benchmarks directly from the terminal
+- **Post-run duplicate review in CLI:** Interactive review of flagged duplicates after processing
+- **Custom performance profiles UI:** Create and manage custom profiles from the Settings page
+- **Configurable system folder filtering:** Editable blocklist for system/application folders in both CLI and GUI
 - **Improved folder-name awareness:** Retain event/memory grouping when photos span nested folders
 - **Project management:** Support multi-drive projects with cross-drive analysis, manual evaluation, and unified reporting
 - **Automatic drive handling:** Notifications when drives finish, safe ejection, and auto-start on new drive connection
 - **Analyze-only mode:** Build CSV without copying files for manual review
-- **Customizable storage template:** User-defined destination folder structure using template variables (inspired by [Immich](https://immich.app/)), e.g. `{{y}}/{{y}}-{{MM}}/{{filename}}.{{ext}}`. Support variables for date/time (`{{y}}`, `{{MM}}`, `{{dd}}`), camera metadata (`{{make}}`, `{{model}}`), and file info (`{{filename}}`, `{{ext}}`, `{{filetype}}`)
+- **Customizable storage template:** User-defined destination folder structure using template variables (inspired by [Immich](https://immich.app/)), e.g. `{{y}}/{{y}}-{{MM}}/{{filename}}.{{ext}}`. Support variables for date/time (`{{y}}`, `{{MM}}`, `{{dd}}`), camera metadata (`{{make}}`, `{{model}}`), and file info (`{{filename}}`, `{{ext}}`, `{{filetype}}`)\n- **Dedicated Duplicates page:** Evaluate whether duplicate management warrants its own top-level page given its critical nature
 
 ---
 
-## 📄 License and Support
+## �️ Technical Backlog
+
+| ID | Description | Priority |
+|----|-------------|----------|
+| TB-001 | **Migrate backend from CommonJS to ES Modules** — `backend/src/index.js` and all route files currently use `require()`/`module.exports`. Should be migrated to `import`/`export` to match the ESM convention used across all other projects in this workspace. Requires updating `backend/package.json` to add `"type": "module"` and converting all `require()` calls. | Low |
+
+---
+
+## �📄 License and Support
 
 This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) License. You're free to use and adapt the project for non-commercial purposes with proper attribution to @Rediwed. See the LICENSE file for complete details.
 

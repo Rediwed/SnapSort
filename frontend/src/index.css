@@ -397,6 +397,149 @@ a:hover {
 .stat-card.pink    .stat-value { color: var(--pink); }
 
 /* ================================================================== */
+/*  Drives Page                                                        */
+/* ================================================================== */
+
+.drives-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.drive-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.drive-card-selected {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-md);
+}
+
+.drive-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.drive-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.drive-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.drive-path {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: block;
+  margin-top: 2px;
+}
+
+.drive-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.drive-scan-area {
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
+  min-height: 40px;
+}
+
+.drive-scanning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.scan-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.drive-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drive-result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.drive-result-label {
+  color: var(--text-secondary);
+}
+
+.drive-result-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.drive-folders {
+  margin-top: 8px;
+}
+
+.drive-folder-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.drive-action-bar {
+  position: sticky;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  border: 1px solid var(--accent);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+}
+
+@media (max-width: 768px) {
+  .drives-grid {
+    grid-template-columns: 1fr;
+  }
+  .drive-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* ================================================================== */
 /*  Pill Tabs                                                          */
 /* ================================================================== */
 
@@ -928,6 +1071,21 @@ td .badge.cyan {
 }
 
 /* ── Duplicate comparison cards ─────────────────────────────────── */
+.dup-notice {
+  grid-column: 1 / -1;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.dup-notice strong {
+  color: var(--text-primary);
+}
+
 .dup-card-list {
   display: grid;
   grid-template-columns: 1fr;
@@ -937,7 +1095,8 @@ td .badge.cyan {
   .dup-card-list {
     grid-template-columns: 1fr 1fr;
   }
-  .dup-card-list .dup-select-all {
+  .dup-card-list .dup-select-all,
+  .dup-card-list .dup-notice {
     grid-column: 1 / -1;
   }
 }
