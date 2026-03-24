@@ -29,7 +29,7 @@ function initDb(dbPath) {
       id            TEXT PRIMARY KEY,
       source_dir    TEXT NOT NULL,
       dest_dir      TEXT NOT NULL,
-      status        TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | error
+      status        TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | error | cancelled
       mode          TEXT NOT NULL DEFAULT 'normal',   -- normal | manual | resume
       min_width     INTEGER NOT NULL DEFAULT 600,
       min_height    INTEGER NOT NULL DEFAULT 600,

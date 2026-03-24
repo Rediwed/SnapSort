@@ -88,3 +88,5 @@ export const startBenchmark = (body = {}) => request('/benchmarks', { method: 'P
 
 /* ---- Health ---- */
 export const fetchHealth = () => request('/health');
+export const fetchDiagnostics = () => request('/diagnostics');
+export const fetchLogs = () => request('/logs');

@@ -25,6 +25,8 @@ const activeProcesses = new Map();
 const photoIdMaps = new Map();
 /* Map of jobId → { currentFile, timestamp } for live file tracking */
 const currentFiles = new Map();
+/* Set of jobIds that have been cancelled by the user — prevents the close handler from overwriting the status */
+const cancelledJobs = new Set();
 
 /**
  * Start a job by spawning the Python organizer.
@@ -127,6 +129,11 @@ function startJob(db, job) {
     activeProcesses.delete(job.id);
     photoIdMaps.delete(job.id);
     currentFiles.delete(job.id);
+    /* If this job was cancelled by the user, the route already set the correct status — skip */
+    if (cancelledJobs.has(job.id)) {
+      cancelledJobs.delete(job.id);
+      return;
+    }
     if (code === 0) {
       /* Only mark done if the Python error handler didn't already set an error */
       if (!pythonErrorMessage) {
@@ -150,6 +157,7 @@ function startJob(db, job) {
 function cancelJob(jobId, db) {
   const child = activeProcesses.get(jobId);
   if (child) {
+    cancelledJobs.add(jobId);
     child.kill('SIGTERM');
     activeProcesses.delete(jobId);
     photoIdMaps.delete(jobId);

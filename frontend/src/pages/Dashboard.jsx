@@ -18,6 +18,7 @@ const statusVariant = {
   running: 'accent',
   done: 'green',
   error: 'red',
+  cancelled: 'orange',
 };
 
 const recentColumns = [

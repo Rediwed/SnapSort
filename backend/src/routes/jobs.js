@@ -139,7 +139,7 @@ router.post('/:id/cancel', (req, res) => {
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
   cancelJob(job.id);
-  const updated = updateJobStatus(req.db, job.id, 'error', {
+  const updated = updateJobStatus(req.db, job.id, 'cancelled', {
     error_message: 'Cancelled by user',
     finished_at: new Date().toISOString(),
   });
