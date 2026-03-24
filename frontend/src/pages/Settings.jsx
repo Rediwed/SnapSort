@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { fetchSettings, updateSettings, fetchProfiles } from '../api';
-import { Check } from 'lucide-react';
+import { fetchSettings, updateSettings, fetchProfiles, fetchDiagnostics, fetchLogs } from '../api';
+import { Check, RefreshCw } from 'lucide-react';
 
 const DEFAULT_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.cr2', '.nef', '.arw',
@@ -20,10 +20,14 @@ export default function Settings() {
   const [profiles, setProfiles] = useState([]);
   const [saved, setSaved] = useState(false);
   const [newExt, setNewExt] = useState('');
+  const [diag, setDiag] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     fetchSettings().then(setValues).catch(console.error);
     fetchProfiles().then(setProfiles).catch(console.error);
+    fetchDiagnostics().then(setDiag).catch(console.error);
   }, []);
 
   /* Derived: current extension list */
@@ -326,6 +330,89 @@ export default function Settings() {
               style={{ width: 120, display: 'inline-block', marginRight: 8 }}
             />
             <button className="btn sm" onClick={addExt}>Add</button>
+          </div>
+        </div>
+
+        {/* ── Diagnostics & Logs ───────────────────────────── */}
+        <div className="card" style={{ gridColumn: '1 / -1' }}>
+          <div className="card-header flex justify-between items-center">
+            <h3>Diagnostics</h3>
+            <button
+              className="btn sm"
+              onClick={() => {
+                fetchDiagnostics().then(setDiag).catch(console.error);
+                setLogsLoading(true);
+                fetchLogs(200).then(setLogs).catch(console.error).finally(() => setLogsLoading(false));
+              }}
+            >
+              <RefreshCw size={14} /> Refresh
+            </button>
+          </div>
+
+          {diag && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+              <div className="stat-mini"><span className="stat-label">Version</span><span className="mono">{diag.version}</span></div>
+              <div className="stat-mini"><span className="stat-label">Node.js</span><span className="mono">{diag.nodeVersion}</span></div>
+              <div className="stat-mini"><span className="stat-label">Python</span><span className="mono" style={{ color: diag.pythonVersion === 'NOT FOUND' ? 'var(--red)' : undefined }}>{diag.pythonVersion}</span></div>
+              <div className="stat-mini"><span className="stat-label">ExifTool</span><span className="mono" style={{ color: diag.exiftoolVersion === 'NOT FOUND' ? 'var(--red)' : undefined }}>{diag.exiftoolVersion}</span></div>
+              <div className="stat-mini"><span className="stat-label">Platform</span><span className="mono">{diag.platform}/{diag.arch}</span></div>
+              <div className="stat-mini"><span className="stat-label">Uptime</span><span className="mono">{diag.uptime >= 3600 ? `${Math.floor(diag.uptime / 3600)}h ${Math.floor((diag.uptime % 3600) / 60)}m` : `${Math.floor(diag.uptime / 60)}m ${diag.uptime % 60}s`}</span></div>
+              <div className="stat-mini"><span className="stat-label">Memory</span><span className="mono">{diag.memoryMB} MB</span></div>
+            </div>
+          )}
+
+          {diag?.mounts?.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <h4 style={{ marginBottom: 8 }}>Volume Mounts (/mnt)</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 8 }}>
+                {diag.mounts.map((m) => (
+                  <div key={m.path} className="mono" style={{
+                    fontSize: 12, padding: '6px 10px', borderRadius: 6,
+                    background: 'var(--bg-active)', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <span>{m.path}</span>
+                    <span style={{ display: 'flex', gap: 8 }}>
+                      <span style={{ color: m.writable ? 'var(--green)' : 'var(--orange)' }}>
+                        {m.writable ? 'rw' : 'ro'}
+                      </span>
+                      <span style={{ opacity: 0.5 }}>{m.entries} items</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="flex justify-between items-center" style={{ marginBottom: 8 }}>
+              <h4>Recent Logs</h4>
+              {!logs.length && (
+                <button
+                  className="btn sm"
+                  disabled={logsLoading}
+                  onClick={() => { setLogsLoading(true); fetchLogs(200).then(setLogs).catch(console.error).finally(() => setLogsLoading(false)); }}
+                >
+                  {logsLoading ? 'Loading…' : 'Load Logs'}
+                </button>
+              )}
+            </div>
+            {logs.length > 0 && (
+              <div style={{
+                maxHeight: 320, overflow: 'auto', background: 'var(--bg-main)',
+                borderRadius: 6, padding: '8px 12px', fontSize: 12, fontFamily: 'var(--font-mono)',
+                lineHeight: 1.6, border: '1px solid var(--border)',
+              }}>
+                {logs.map((entry, i) => (
+                  <div key={i} style={{ color: entry.level === 'error' ? 'var(--red)' : entry.level === 'warn' ? 'var(--orange)' : 'var(--text-secondary)' }}>
+                    <span style={{ opacity: 0.4 }}>{entry.ts.slice(11, 19)}</span>{' '}
+                    {entry.message}
+                  </div>
+                ))}
+              </div>
+            )}
+            {logs.length === 0 && !logsLoading && (
+              <p className="form-hint">Click "Load Logs" to view recent backend output. Useful for debugging jobs that fail without visible errors.</p>
+            )}
           </div>
         </div>
         </div>

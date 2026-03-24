@@ -83,3 +83,7 @@ export const startBenchmark = (body = {}) => request('/benchmarks', { method: 'P
 
 /* ---- Health ---- */
 export const fetchHealth = () => request('/health');
+
+/* ---- Diagnostics & Logs ---- */
+export const fetchDiagnostics = () => request('/diagnostics');
+export const fetchLogs = (limit = 200) => request(`/logs?limit=${limit}`);

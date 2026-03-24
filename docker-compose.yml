@@ -2,6 +2,7 @@ version: "3.9"
 
 services:
   snapsort:
+    image: rediwed/snapsort:1.1.0
     build: .
     container_name: snapsort
     ports:

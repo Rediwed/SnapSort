@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>SnapSort</Name>
-  <Repository>snapsort:latest</Repository>
-  <Registry/>
+  <Repository>rediwed/snapsort:latest</Repository>
+  <Registry>https://hub.docker.com/r/rediwed/snapsort/</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support/>
-  <Project>https://github.com/YOUR_USERNAME/SnapSort</Project>
+  <Project>https://github.com/Rediwed/SnapSort</Project>
   <Overview>
     SnapSort automatically organizes your photos by EXIF date into
     Year/Month folders, detects duplicates via fast hashing, and filters
@@ -18,7 +18,7 @@
   <Category>MediaApp:Photos</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/YOUR_USERNAME/SnapSort/main/frontend/public/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/Rediwed/SnapSort/main/frontend/public/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>

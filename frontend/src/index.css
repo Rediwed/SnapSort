@@ -1451,6 +1451,24 @@ td .badge.cyan {
   align-items: start;
 }
 
+.stat-mini {
+  background: var(--bg-active);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stat-mini .stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.stat-mini .mono {
+  font-size: 13px;
+}
+
 /* ================================================================== */
 /*  Benchmark page                                                     */
 /* ================================================================== */

@@ -9,7 +9,12 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { execSync } = require('child_process');
 const { initDb } = require('./db/schema');
+const { initLogCapture, getRecentLogs } = require('./services/logBuffer');
+
+/* Start capturing console output into a ring buffer before anything else logs */
+initLogCapture();
 const jobRoutes = require('./routes/jobs');
 const photoRoutes = require('./routes/photos');
 const duplicateRoutes = require('./routes/duplicates');
@@ -67,6 +72,60 @@ app.use('/api/profiles', profileRoutes);
 /* Health check */
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', version: APP_VERSION });
+});
+
+/* Recent logs — lets the web UI show backend output without SSH */
+app.get('/api/logs', (_req, res) => {
+  const limit = Math.min(Number(_req.query.limit) || 200, 500);
+  res.json(getRecentLogs(limit));
+});
+
+/* Diagnostics — system info for remote troubleshooting */
+app.get('/api/diagnostics', (_req, res) => {
+  const diag = {
+    version: APP_VERSION,
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    uptime: Math.round(process.uptime()),
+    memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    pythonVersion: null,
+    exiftoolVersion: null,
+    mounts: [],
+  };
+
+  /* Python availability */
+  try {
+    diag.pythonVersion = execSync('python3 --version 2>&1', { timeout: 5000 }).toString().trim();
+  } catch {
+    diag.pythonVersion = 'NOT FOUND';
+  }
+
+  /* exiftool availability */
+  try {
+    diag.exiftoolVersion = execSync('exiftool -ver 2>&1', { timeout: 5000 }).toString().trim();
+  } catch {
+    diag.exiftoolVersion = 'NOT FOUND';
+  }
+
+  /* List /mnt mounts visible inside the container */
+  try {
+    const entries = fs.readdirSync('/mnt', { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const mp = '/mnt/' + e.name;
+      try {
+        const stat = fs.statSync(mp);
+        let writable = false;
+        try { fs.accessSync(mp, fs.constants.W_OK); writable = true; } catch {}
+        diag.mounts.push({ path: mp, writable, entries: fs.readdirSync(mp).length });
+      } catch {
+        diag.mounts.push({ path: mp, writable: false, entries: 0, error: 'access denied' });
+      }
+    }
+  } catch { /* /mnt doesn't exist or not accessible */ }
+
+  res.json(diag);
 });
 
 /* ------------------------------------------------------------------ */

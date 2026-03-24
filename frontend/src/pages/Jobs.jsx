@@ -110,7 +110,14 @@ export default function Jobs() {
       const p = profiles.find((pr) => pr.id === r.performance_profile);
       return p ? <Badge variant="pink">{p.name}</Badge> : <span className="mono" style={{ opacity: 0.4 }}>default</span>;
     }},
-    { key: 'status', header: 'Status', render: (r) => <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge> },
+    { key: 'status', header: 'Status', render: (r) => (
+      <div>
+        <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge>
+        {r.status === 'error' && r.error_message && (
+          <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4, maxWidth: 260, lineHeight: 1.3 }}>{r.error_message}</div>
+        )}
+      </div>
+    )},
     {
       key: 'progress', header: 'Progress', className: 'mono', render: (r) =>
         r.status === 'running' ? pctBar(r) : `${r.processed}/${r.total_files || '?'}`,
@@ -118,7 +125,7 @@ export default function Jobs() {
     {
       key: 'actions', header: 'Actions', render: (r) => (
         <div className="flex gap-8">
-          {r.status === 'pending' && <button className="btn sm primary" onClick={() => startJob(r.id).then(load)}>Start</button>}
+          {r.status === 'pending' && <button className="btn sm primary" onClick={() => startJob(r.id).then(load).catch((e) => { alert(e.message); load(); })}>Start</button>}
           {r.status === 'running' && <button className="btn sm danger" onClick={() => cancelJob(r.id).then(load)}>Cancel</button>}
           {['done', 'error'].includes(r.status) && <button className="btn sm danger" onClick={() => setDeleteTarget(r)}>Delete</button>}
         </div>
