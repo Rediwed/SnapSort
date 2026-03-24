@@ -101,10 +101,6 @@ function startJob(db, job) {
       if (!line.trim()) continue;
       try {
         const evt = JSON.parse(line);
-        /* Capture descriptive error message before the close handler fires */
-        if (evt.event === 'error' && evt.message) {
-          pythonErrorMessage = evt.message;
-        }
         handleEvent(db, job.id, evt);
       } catch {
         /* not JSON — ignore (plain log output) */

@@ -427,11 +427,12 @@ def optimized_directory_scan(source_dir, supported_extensions):
     supported_lower = tuple(ext.lower() for ext in supported_extensions)
 
     for root, dirs, filenames in os.walk(source_dir):
-        root_lower = root.lower()
-        if any(skip in root_lower for skip in SYSTEM_FOLDERS):
-            continue
         # Prune child dirs so os.walk will not descend into them.
         dirs[:] = [d for d in dirs if d.lower() not in SYSTEM_FOLDERS]
+        # Skip this directory if any path component is a system folder
+        root_components = {c.lower() for c in root.replace("\\", "/").split("/") if c}
+        if root_components & SYSTEM_FOLDERS:
+            continue
         for fname in filenames:
             if fname.lower().endswith(supported_lower):
                 files.append(os.path.join(root, fname))
