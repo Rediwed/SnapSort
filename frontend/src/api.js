@@ -68,6 +68,11 @@ export const fetchFilesystemRoots = () => request('/filesystem/roots');
 /* ---- Drives ---- */
 export const fetchDrives = () => request('/drives');
 export const prescanDrive = (path) => request('/drives/prescan', { method: 'POST', body: JSON.stringify({ path }) });
+export const fetchActivePrescan = () => request('/drives/prescan/active');
+export const fetchPrescanResult = (path) => {
+  const q = new URLSearchParams({ path }).toString();
+  return request(`/drives/prescan/result?${q}`);
+};
 
 /* ---- Performance Profiles ---- */
 export const fetchProfiles = () => request('/profiles');
@@ -83,7 +88,3 @@ export const startBenchmark = (body = {}) => request('/benchmarks', { method: 'P
 
 /* ---- Health ---- */
 export const fetchHealth = () => request('/health');
-
-/* ---- Diagnostics & Logs ---- */
-export const fetchDiagnostics = () => request('/diagnostics');
-export const fetchLogs = (limit = 200) => request(`/logs?limit=${limit}`);

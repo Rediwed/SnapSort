@@ -195,7 +195,7 @@ function detectLinuxDrives() {
 }
 
 /* ================================================================== */
-/*  POST /api/drives/prescan — quick file count & size estimate        */
+/*  Prescan — async file counting with progress tracking               */
 /* ================================================================== */
 
 const IMAGE_EXTENSIONS = new Set([
@@ -203,12 +203,17 @@ const IMAGE_EXTENSIONS = new Set([
   '.rw2', '.orf', '.dng', '.heic', '.heif',
 ]);
 
+const pathModule = require('path');
+
+/* In-memory map of path → prescan state (progress is polled by the sidebar) */
+const activePrescanMap = new Map();
+
 /**
  * POST /api/drives/prescan
  * Body: { path: "/Volumes/MyDrive" }
  *
- * Walks the directory tree and returns counts / total size of image files
- * vs non-image files, plus a sample of top-level folders found.
+ * Kicks off an async prescan. Returns immediately with { status: 'started' }.
+ * Poll GET /api/drives/prescan/active to track progress.
  */
 router.post('/prescan', (req, res) => {
   const { path: scanPath } = req.body;
@@ -218,89 +223,148 @@ router.post('/prescan', (req, res) => {
     if (!fs.existsSync(scanPath) || !fs.statSync(scanPath).isDirectory()) {
       return res.status(400).json({ error: 'Path does not exist or is not a directory' });
     }
-
-    const result = prescanDirectory(scanPath);
-    res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
+
+  /* If already scanning this path, don't duplicate */
+  const existing = activePrescanMap.get(scanPath);
+  if (existing && existing.status === 'scanning') {
+    return res.json({ status: 'already-scanning', path: scanPath });
+  }
+
+  /* Initialize progress state */
+  const state = {
+    path: scanPath,
+    driveName: scanPath.split('/').pop(),
+    status: 'scanning',
+    imageCount: 0,
+    imageBytes: 0,
+    otherCount: 0,
+    otherBytes: 0,
+    totalScanned: 0,
+    currentFile: null,
+    topFolders: [],
+    truncated: false,
+    startedAt: Date.now(),
+  };
+  activePrescanMap.set(scanPath, state);
+
+  /* Run the walk async via setImmediate batching */
+  prescanAsync(scanPath, state);
+
+  res.json({ status: 'started', path: scanPath });
 });
 
-const pathModule = require('path');
+/**
+ * GET /api/drives/prescan/active
+ *
+ * Returns all active (or recently finished) prescans for the sidebar indicator.
+ */
+router.get('/prescan/active', (_req, res) => {
+  const result = [];
+  for (const [, state] of activePrescanMap) {
+    result.push({ ...state });
+  }
+  res.json(result);
+});
 
-function prescanDirectory(rootPath) {
-  let imageCount = 0;
-  let imageBytes = 0;
-  let otherCount = 0;
-  let otherBytes = 0;
-  const topFolders = [];
+/**
+ * GET /api/drives/prescan/result?path=...
+ *
+ * Returns the final prescan result for a specific path (or current progress).
+ */
+router.get('/prescan/result', (req, res) => {
+  const scanPath = req.query.path;
+  if (!scanPath) return res.status(400).json({ error: 'path query param is required' });
 
-  /* Collect top-level folder listing */
+  const state = activePrescanMap.get(scanPath);
+  if (!state) return res.status(404).json({ error: 'No prescan found for this path' });
+
+  res.json({
+    path: state.path,
+    status: state.status,
+    imageCount: state.imageCount,
+    imageBytes: state.imageBytes,
+    otherCount: state.otherCount,
+    otherBytes: state.otherBytes,
+    totalFiles: state.imageCount + state.otherCount,
+    totalBytes: state.imageBytes + state.otherBytes,
+    topFolders: state.topFolders,
+    truncated: state.truncated,
+    currentFile: state.currentFile,
+    error: state.error || null,
+  });
+});
+
+const SYSTEM_FOLDERS = new Set([
+  'windows', 'program files', 'program files (x86)', 'appdata',
+  'cache', 'thumbnails', 'tmp', 'temp', '$recycle.bin',
+  'system volume information', 'node_modules',
+]);
+
+const MAX_FILES = 500000;
+const fsp = fs.promises;
+
+/**
+ * Walk directory tree using async fs operations so the event loop
+ * is never blocked and other API requests can be served concurrently.
+ */
+async function prescanAsync(rootPath, state) {
+  /* Collect top-level folders first */
   try {
-    const entries = fs.readdirSync(rootPath, { withFileTypes: true });
+    const entries = await fsp.readdir(rootPath, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue; // skip hidden
-      if (entry.isDirectory()) {
-        topFolders.push(entry.name);
-      }
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) state.topFolders.push(entry.name);
     }
   } catch { /* permission error */ }
 
-  /* Recursive walk with a depth limit to keep it fast */
-  const MAX_FILES = 500000; // safety cap
-  let totalScanned = 0;
-  let truncated = false;
+  /* Async iterative walk using an explicit stack */
+  const dirStack = [rootPath];
 
-  function walk(dir) {
-    if (totalScanned >= MAX_FILES) { truncated = true; return; }
+  while (dirStack.length > 0) {
+    if (state.status !== 'scanning') return; // cancelled
+    if (state.totalScanned >= MAX_FILES) { state.truncated = true; break; }
+
+    const dir = dirStack.pop();
     let entries;
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch { return; } // permission denied
+      entries = await fsp.readdir(dir, { withFileTypes: true });
+    } catch { continue; } // permission denied
 
     for (const entry of entries) {
-      if (totalScanned >= MAX_FILES) { truncated = true; return; }
+      if (state.totalScanned >= MAX_FILES) { state.truncated = true; break; }
       if (entry.name.startsWith('.')) continue;
 
       const fullPath = pathModule.join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        /* Skip system folders */
-        const lower = entry.name.toLowerCase();
-        if (['windows', 'program files', 'program files (x86)', 'appdata',
-             'cache', 'thumbnails', 'tmp', 'temp', '$recycle.bin',
-             'system volume information', 'node_modules'].includes(lower)) continue;
-        walk(fullPath);
+        if (SYSTEM_FOLDERS.has(entry.name.toLowerCase())) continue;
+        dirStack.push(fullPath);
       } else if (entry.isFile()) {
-        totalScanned++;
+        state.totalScanned++;
         const ext = pathModule.extname(entry.name).toLowerCase();
         let size = 0;
-        try { size = fs.statSync(fullPath).size; } catch { /* skip */ }
+        try { size = (await fsp.stat(fullPath)).size; } catch { /* skip */ }
 
         if (IMAGE_EXTENSIONS.has(ext)) {
-          imageCount++;
-          imageBytes += size;
+          state.imageCount++;
+          state.imageBytes += size;
+          state.currentFile = entry.name;
         } else {
-          otherCount++;
-          otherBytes += size;
+          state.otherCount++;
+          state.otherBytes += size;
         }
       }
     }
   }
 
-  walk(rootPath);
-
-  return {
-    path: rootPath,
-    imageCount,
-    imageBytes,
-    otherCount,
-    otherBytes,
-    totalFiles: imageCount + otherCount,
-    totalBytes: imageBytes + otherBytes,
-    topFolders,
-    truncated,
-  };
+  /* Done */
+  state.status = 'done';
+  state.currentFile = null;
+  /* Auto-clean after 5 minutes */
+  setTimeout(() => activePrescanMap.delete(rootPath), 5 * 60 * 1000);
 }
 
 module.exports = router;

@@ -238,6 +238,19 @@ a:hover {
   border-radius: 2px;
   transition: width 0.6s ease;
 }
+.aji-progress-indeterminate {
+  width: 40% !important;
+  animation: aji-slide 1.4s ease-in-out infinite;
+}
+@keyframes aji-slide {
+  0%   { margin-left: 0; }
+  50%  { margin-left: 60%; }
+  100% { margin-left: 0; }
+}
+@keyframes aji-pulse-bar {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
 .aji-stats {
   display: flex;
   justify-content: space-between;
@@ -1449,24 +1462,6 @@ td .badge.cyan {
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   gap: 20px;
   align-items: start;
-}
-
-.stat-mini {
-  background: var(--bg-active);
-  border-radius: 6px;
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.stat-mini .stat-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-}
-.stat-mini .mono {
-  font-size: 13px;
 }
 
 /* ================================================================== */
