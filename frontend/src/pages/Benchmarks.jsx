@@ -4,6 +4,7 @@ import Badge from '../components/Badge';
 import DataTable from '../components/DataTable';
 import FilePicker from '../components/FilePicker';
 import { fetchBenchmarks, fetchBenchmark, startBenchmark, fetchProfiles, updateSettings } from '../api';
+import { Play, AlertTriangle, BookOpen, HardDrive, Cpu, Zap, RefreshCw, Disc } from 'lucide-react';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -155,7 +156,7 @@ export default function Benchmarks() {
           onClick={handleStart}
           disabled={starting || !config.sourcePath || !config.destPath || pathsMatch}
         >
-          {starting ? 'Running…' : '▶ Run Benchmark'}
+          {starting ? 'Running…' : <><Play size={14} /> Run Benchmark</>}
         </button>
       </div>
 
@@ -201,7 +202,7 @@ export default function Benchmarks() {
           )}
 
           <div style={{ padding: '8px 12px', background: 'var(--orange-muted, rgba(210,153,34,0.1))', borderRadius: 'var(--radius-md)', color: 'var(--orange)', fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
-            ⚠️ Temporary test files will be written to <strong>both</strong> source and destination folders during the benchmark, then automatically deleted afterwards. Do not use this on a source drive that is malfunctioning or at risk of data loss.
+                        <AlertTriangle size={14} /> Temporary test files will be written to <strong>both</strong> source and destination folders during the benchmark, then automatically deleted afterwards. Do not use this on a source drive that is malfunctioning or at risk of data loss.
           </div>
 
           <div className="bench-options">
@@ -270,7 +271,7 @@ export default function Benchmarks() {
                     <div className="bench-bottleneck-result">
                       <span className="bench-bottleneck-label">Bottleneck</span>
                       <Badge variant={r.bottleneck === 'cpu' ? 'pink' : r.bottleneck === 'source' ? 'cyan' : 'accent'}>
-                        {r.bottleneck === 'source' ? '📖 Source Volume' : r.bottleneck === 'destination' ? '💾 Destination Volume' : '🧮 CPU / Hashing'}
+                        {r.bottleneck === 'source' ? <><BookOpen size={14} /> Source Volume</> : r.bottleneck === 'destination' ? <><HardDrive size={14} /> Destination Volume</> : <><Cpu size={14} /> CPU / Hashing</>}
                       </Badge>
                     </div>
                     <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
@@ -327,11 +328,11 @@ export default function Benchmarks() {
                           <div className="bench-profile-desc">{profile.description}</div>
                           <div className="profile-summary">
                             {profile.enable_multithreading
-                              ? <span className="tag green">⚡ Multi-threaded</span>
-                              : <span className="tag orange">🔄 Sequential</span>}
+                              ? <span className="tag green"><Zap size={14} /> Multi-threaded</span>
+                              : <span className="tag orange"><RefreshCw size={14} /> Sequential</span>}
                             <span className="tag accent">{profile.max_workers} Workers</span>
                             <span className="tag cyan">Batch {profile.batch_size}</span>
-                            {profile.sequential_processing ? <span className="tag orange">📀 Sequential I/O</span> : null}
+                            {profile.sequential_processing ? <span className="tag orange"><Disc size={14} /> Sequential I/O</span> : null}
                           </div>
                           <button
                             className={`btn sm ${isSuggested ? 'primary' : ''}`}

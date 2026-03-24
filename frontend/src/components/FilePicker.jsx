@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { browseDirectory, fetchFilesystemRoots, fetchDrives } from '../api';
+import { Plug, Zap, Disc, Container, HardDrive, FolderOpen, File, ArrowUp, FolderSearch } from 'lucide-react';
 
 /**
  * Server-side file/folder picker.
@@ -54,11 +55,11 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
 
   const driveIcon = (type) => {
     switch (type) {
-      case 'usb': return '🔌';
-      case 'nvme': return '⚡';
-      case 'sata': return '💽';
-      case 'docker-volume': return '🐳';
-      default: return '💾';
+      case 'usb': return <Plug size={18} />;
+      case 'nvme': return <Zap size={18} />;
+      case 'sata': return <Disc size={18} />;
+      case 'docker-volume': return <Container size={18} />;
+      default: return <HardDrive size={18} />;
     }
   };
 
@@ -78,14 +79,14 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
             style={{ borderRadius: 0, flex: 1 }}
             onClick={() => setTab('browse')}
           >
-            📁 Browse
+            <FolderOpen size={14} /> Browse
           </button>
           <button
             className={`pill-tab ${tab === 'drives' ? 'active' : ''}`}
             style={{ borderRadius: 0, flex: 1 }}
             onClick={() => setTab('drives')}
           >
-            💾 Drives ({drives.length})
+            <HardDrive size={14} /> Drives ({drives.length})
           </button>
         </div>
 
@@ -95,7 +96,7 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
             <div>
               {drives.length === 0 ? (
                 <div className="empty-state">
-                  <div className="empty-icon">💾</div>
+                  <div className="empty-icon"><HardDrive size={32} /></div>
                   <h3>No external drives detected</h3>
                   <p>Connect a USB, SATA, or NVMe drive and refresh.</p>
                   <div style={{
@@ -104,7 +105,7 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
                     border: '1px solid var(--border)', textAlign: 'left',
                     fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6,
                   }}>
-                    <strong style={{ color: 'var(--text-primary)' }}>🐳 Running in Docker?</strong><br />
+                    <strong style={{ color: 'var(--text-primary)' }}><Container size={14} style={{ verticalAlign: 'middle' }} /> Running in Docker?</strong><br />
                     Only paths mounted into the container are visible. Add volume mappings in your
                     container settings for any drives you want to browse:<br />
                     <code style={{ fontSize: 11, color: 'var(--accent)' }}>/mnt/disks → /mnt/disks</code> (Unraid USB/external drives)<br />
@@ -197,7 +198,7 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
                       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
                     >
-                      <span style={{ width: 20, textAlign: 'center' }}>⬆</span>
+                      <span style={{ width: 20, textAlign: 'center' }}><ArrowUp size={16} /></span>
                       <span>..</span>
                     </button>
                   )}
@@ -223,7 +224,7 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
                       onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
                     >
                       <span style={{ width: 20, textAlign: 'center' }}>
-                        {entry.type === 'directory' ? '📁' : '📄'}
+                        {entry.type === 'directory' ? <FolderOpen size={16} /> : <File size={16} />}
                       </span>
                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {entry.name}

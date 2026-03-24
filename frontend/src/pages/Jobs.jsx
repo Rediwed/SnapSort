@@ -4,6 +4,7 @@ import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import FilePicker from '../components/FilePicker';
 import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles } from '../api';
+import { FlaskConical, Zap, RefreshCw, Disc, Trash2, AlertTriangle } from 'lucide-react';
 
 const statusVariant = { pending: 'orange', running: 'accent', overriding: 'cyan', done: 'green', error: 'red' };
 
@@ -138,7 +139,7 @@ export default function Jobs() {
             onClick={handleLoadTest}
             disabled={loadingTest}
           >
-            {loadingTest ? 'Loading…' : '🧪 Load Test Data'}
+            {loadingTest ? 'Loading…' : <><FlaskConical size={14} /> Load Test Data</>}
           </button>
           <button className="btn primary" onClick={() => setShowNew(true)}>+ New Job</button>
         </div>
@@ -204,12 +205,12 @@ export default function Jobs() {
               <>
                 {p.description && <p className="form-hint">{p.description}</p>}
                 <div className="profile-summary">
-                  <span>{p.enable_multithreading ? '⚡ Multi-threaded' : '🔄 Single-threaded'}</span>
+                  <span>{p.enable_multithreading ? <><Zap size={14} /> Multi-threaded</> : <><RefreshCw size={14} /> Single-threaded</>}</span>
                   <span>Workers: {p.max_workers}</span>
                   <span>Batch: {p.batch_size}</span>
                   <span>Copies: {p.concurrent_copies}</span>
                   <span>Hash: {(p.hash_bytes / 1024).toFixed(0)} KB</span>
-                  {p.sequential_processing ? <span>📀 Sequential I/O</span> : null}
+                  {p.sequential_processing ? <span><Disc size={14} /> Sequential I/O</span> : null}
                 </div>
               </>
             );
@@ -263,7 +264,7 @@ export default function Jobs() {
               load();
             }}
           >
-            🗑️ Delete Job Record Only
+                        <Trash2 size={14} /> Delete Job Record Only
             <span style={{ display: 'block', fontSize: 12, opacity: 0.6, fontWeight: 400 }}>
               Removes the job from the database. Copied photos stay on disk.
             </span>
@@ -272,7 +273,7 @@ export default function Jobs() {
             className="btn danger"
             onClick={() => setConfirmPhotos(true)}
           >
-            ⚠️ Delete Job + Copied Photos
+                        <AlertTriangle size={14} /> Delete Job + Copied Photos
             <span style={{ display: 'block', fontSize: 12, opacity: 0.8, fontWeight: 400 }}>
               Removes the job AND deletes all {deleteTarget?.copied || 0} copied files from disk.
             </span>
@@ -283,7 +284,7 @@ export default function Jobs() {
       {/* Confirm photo deletion */}
       <Modal
         open={confirmPhotos}
-        title="⚠️ Confirm File Deletion"
+        title={<><AlertTriangle size={16} /> Confirm File Deletion</>}
         onClose={() => setConfirmPhotos(false)}
         footer={
           <>

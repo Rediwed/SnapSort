@@ -1,3 +1,5 @@
+import { Inbox } from 'lucide-react';
+
 /**
  * Reusable table with column definitions.
  *
@@ -7,7 +9,7 @@ export default function DataTable({ columns, rows, emptyMessage = 'No data' }) {
   if (!rows || rows.length === 0) {
     return (
       <div className="empty-state">
-        <div className="empty-icon">📭</div>
+        <div className="empty-icon"><Inbox size={32} /></div>
         <h3>{emptyMessage}</h3>
       </div>
     );

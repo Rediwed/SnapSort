@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Badge from '../components/Badge';
 import { fetchDrives, prescanDrive, createJob, startJob } from '../api';
+import { Plug, Disc, DiscAlbum, Container, HardDrive, RefreshCw, BarChart3, Search, Camera, Package, FileText, Folder, AlertTriangle, XCircle, Play } from 'lucide-react';
 
 function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '—';
@@ -13,12 +14,12 @@ function formatBytes(bytes) {
 }
 
 const typeIcons = {
-  usb: '🔌',
-  nvme: '💽',
-  sata: '💿',
-  'disk-image': '📀',
-  'docker-volume': '🐳',
-  unknown: '💾',
+  usb: <Plug size={18} />,
+  nvme: <Disc size={18} />,
+  sata: <DiscAlbum size={18} />,
+  'disk-image': <DiscAlbum size={18} />,
+  'docker-volume': <Container size={18} />,
+  unknown: <HardDrive size={18} />,
 };
 
 export default function Drives() {
@@ -105,10 +106,10 @@ export default function Drives() {
         </div>
         <div className="flex gap-8">
           <button className="btn" onClick={load} disabled={loading}>
-            {loading ? 'Detecting…' : '🔄 Refresh'}
+            {loading ? 'Detecting…' : <><RefreshCw size={14} /> Refresh</>}
           </button>
           <button className="btn primary" onClick={handlePrescanAll} disabled={drives.length === 0}>
-            📊 Scan All
+                        <BarChart3 size={14} /> Scan All
           </button>
         </div>
       </div>
@@ -116,12 +117,12 @@ export default function Drives() {
       <div className="page-body">
         {loading && drives.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">🔍</div>
+            <div className="empty-icon"><Search size={32} /></div>
             <h3>Detecting drives…</h3>
           </div>
         ) : drives.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">💾</div>
+            <div className="empty-icon"><HardDrive size={32} /></div>
             <h3>No external drives detected</h3>
             <p style={{ color: 'var(--text-secondary)', marginTop: 8 }}>
               Connect an external drive or USB device and click Refresh.
@@ -156,7 +157,7 @@ export default function Drives() {
                             style={{ width: 18, height: 18, accentColor: 'var(--accent)' }}
                           />
                         )}
-                        <span className="drive-icon">{typeIcons[drive.type] || '💾'}</span>
+                        <span className="drive-icon">{typeIcons[drive.type] || <HardDrive size={18} />}</span>
                         <div>
                           <h3 className="drive-name">{drive.name}</h3>
                           <span className="mono drive-path">{drive.path}</span>
@@ -181,7 +182,7 @@ export default function Drives() {
                           className="btn primary sm"
                           onClick={(e) => { e.stopPropagation(); handlePrescan(drive.path); }}
                         >
-                          🔍 Pre-scan
+                                                    <Search size={14} /> Pre-scan
                         </button>
                       )}
                       {isScanning && (
@@ -193,24 +194,24 @@ export default function Drives() {
                       {result && !result.error && (
                         <div className="drive-results">
                           <div className="drive-result-row">
-                            <span className="drive-result-label">📷 Photos found</span>
+                            <span className="drive-result-label"><Camera size={14} /> Photos found</span>
                             <span className="drive-result-value mono">{result.imageCount.toLocaleString()}</span>
                           </div>
                           <div className="drive-result-row">
-                            <span className="drive-result-label">📦 Photo size</span>
+                            <span className="drive-result-label"><Package size={14} /> Photo size</span>
                             <span className="drive-result-value mono">{formatBytes(result.imageBytes)}</span>
                           </div>
                           <div className="drive-result-row">
-                            <span className="drive-result-label">📄 Other files</span>
+                            <span className="drive-result-label"><FileText size={14} /> Other files</span>
                             <span className="drive-result-value mono">{result.otherCount.toLocaleString()}</span>
                           </div>
                           <div className="drive-result-row">
-                            <span className="drive-result-label">📁 Total</span>
+                            <span className="drive-result-label"><Folder size={14} /> Total</span>
                             <span className="drive-result-value mono">{result.totalFiles.toLocaleString()} files ({formatBytes(result.totalBytes)})</span>
                           </div>
                           {result.truncated && (
                             <div style={{ color: 'var(--orange)', fontSize: 12, marginTop: 4 }}>
-                              ⚠ Scan capped at 500k files — actual count may be higher
+                                                            <AlertTriangle size={14} /> Scan capped at 500k files — actual count may be higher
                             </div>
                           )}
                           {result.topFolders.length > 0 && (
@@ -231,13 +232,13 @@ export default function Drives() {
                             style={{ marginTop: 8 }}
                             onClick={(e) => { e.stopPropagation(); handlePrescan(drive.path); }}
                           >
-                            🔄 Re-scan
+                                                        <RefreshCw size={14} /> Re-scan
                           </button>
                         </div>
                       )}
                       {result && result.error && (
                         <div style={{ color: 'var(--red)', fontSize: 13 }}>
-                          ❌ {result.error}
+                                                    <XCircle size={14} /> {result.error}
                           <button
                             className="btn sm"
                             style={{ marginLeft: 8 }}
@@ -286,7 +287,7 @@ export default function Drives() {
                   onClick={handleStartJobs}
                   disabled={creating || !destDir}
                 >
-                  {creating ? 'Creating…' : `▶ Start ${selected.size} Job${selected.size > 1 ? 's' : ''}`}
+                  {creating ? 'Creating…' : <><Play size={14} /> Start {selected.size} Job{selected.size > 1 ? 's' : ''}</>}
                 </button>
               </div>
             )}

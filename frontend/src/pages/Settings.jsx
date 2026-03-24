@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchSettings, updateSettings, fetchProfiles } from '../api';
+import { Check } from 'lucide-react';
 
 const DEFAULT_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.cr2', '.nef', '.arw',
@@ -97,7 +98,7 @@ export default function Settings() {
           <p>Configure the SnapSort engine defaults</p>
         </div>
         <button className="btn primary" onClick={handleSave}>
-          {saved ? '✓ Saved' : 'Save Settings'}
+          {saved ? <><Check size={14} /> Saved</> : 'Save Settings'}
         </button>
       </div>
 

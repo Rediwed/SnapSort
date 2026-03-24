@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Badge from '../components/Badge';
 import PillTabs from '../components/PillTabs';
 import { fetchPhotos, fetchPhotoJobs, photoPreviewUrl, overridePhotos, resolveDuplicate } from '../api';
+import { CircleCheck, Inbox, Info, Download, Folder } from 'lucide-react';
 
 const statusVariant = { copied: 'green', skipped: 'orange', error: 'red', pending: 'accent', duplicate: 'red' };
 const resolutionVariant = { keep_overwrite: 'green', keep_rename: 'cyan', ignore: 'red', undecided: 'orange' };
@@ -346,7 +347,7 @@ export default function Photos() {
         {/* Content */}
         {photos.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">{isDupTab ? '✅' : '📭'}</div>
+            <div className="empty-icon">{isDupTab ? <CircleCheck size={32} /> : <Inbox size={32} />}</div>
             <h3>{isDupTab ? 'No duplicates found' : 'No photos found'}</h3>
             {isDupTab && <p>Run a job with dedup enabled to detect duplicate photos.</p>}
           </div>
@@ -355,7 +356,7 @@ export default function Photos() {
           <div className="dup-card-list">
             {/* Source-safety notice */}
             <div className="dup-notice">
-              <strong>ℹ️ Note:</strong> Resolutions apply to the <em>destination</em> only — source files are never modified. <strong>Overwrite</strong> copies the source over the matched destination file. <strong>Keep Both</strong> copies the source alongside it with a unique name. <strong>Skip</strong> leaves the destination as-is.
+              <strong><Info size={14} style={{ verticalAlign: 'middle' }} /> Note:</strong> Resolutions apply to the <em>destination</em> only — source files are never modified. <strong>Overwrite</strong> copies the source over the matched destination file. <strong>Keep Both</strong> copies the source alongside it with a unique name. <strong>Skip</strong> leaves the destination as-is.
             </div>
             {/* Select-all row */}
             <label className="dup-select-all">
@@ -430,7 +431,7 @@ export default function Photos() {
                   <div className="dup-compare">
                     {/* ── Source (incoming) photo ── */}
                     <div className="dup-side source">
-                      <div className="dup-side-label">📥 Source (incoming)</div>
+                      <div className="dup-side-label"><Download size={14} /> Source (incoming)</div>
                       <div className="dup-side-file">
                         <span
                           className="filename-preview"
@@ -447,7 +448,7 @@ export default function Photos() {
 
                     {/* ── Matched (existing/destination) photo ── */}
                     <div className="dup-side match">
-                      <div className="dup-side-label">📁 Already in library</div>
+                      <div className="dup-side-label"><Folder size={14} /> Already in library</div>
                       <div className="dup-side-file">
                         {photo.matched_photo_id ? (
                           <span

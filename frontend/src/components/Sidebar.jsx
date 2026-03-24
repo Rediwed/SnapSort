@@ -2,14 +2,15 @@ import { NavLink } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { fetchHealth } from '../api';
 import ActiveJobIndicator from './ActiveJobIndicator';
+import { LayoutDashboard, HardDrive, Play, Image, Timer, Settings } from 'lucide-react';
 
 const links = [
-  { to: '/dashboard',  icon: '◉', label: 'Dashboard' },
-  { to: '/drives',     icon: '💾', label: 'Drives' },
-  { to: '/jobs',       icon: '▶', label: 'Jobs' },
-  { to: '/photos',     icon: '▣', label: 'Photos' },
-  { to: '/benchmarks', icon: '⏱', label: 'Benchmarks' },
-  { to: '/settings',   icon: '⚙', label: 'Settings' },
+  { to: '/dashboard',  icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
+  { to: '/drives',     icon: <HardDrive size={18} />, label: 'Drives' },
+  { to: '/jobs',       icon: <Play size={18} />, label: 'Jobs' },
+  { to: '/photos',     icon: <Image size={18} />, label: 'Photos' },
+  { to: '/benchmarks', icon: <Timer size={18} />, label: 'Benchmarks' },
+  { to: '/settings',   icon: <Settings size={18} />, label: 'Settings' },
 ];
 
 export default function Sidebar({ open, onClose }) {
