@@ -997,6 +997,50 @@ td.truncate {
   cursor: not-allowed;
 }
 
+/* Pagination */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  margin-top: 8px;
+  border-top: 1px solid var(--border, rgba(255,255,255,0.08));
+  font-size: 13px;
+  color: var(--text-secondary, #8b949e);
+}
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pagination-controls .btn.sm {
+  min-width: 32px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pagination-controls .btn.sm.active {
+  background: var(--cyan, #58a6ff);
+  color: #0d1117;
+  font-weight: 700;
+  pointer-events: none;
+}
+.pagination-ellipsis {
+  padding: 4px 6px;
+  color: var(--text-secondary, #8b949e);
+}
+.pagination-size .form-select {
+  width: auto;
+  min-width: 110px;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.pagination-info {
+  white-space: nowrap;
+}
+
 /* Checkbox column */
 .col-check {
   width: 40px;

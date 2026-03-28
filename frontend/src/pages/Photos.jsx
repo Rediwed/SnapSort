@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Badge from '../components/Badge';
 import PillTabs from '../components/PillTabs';
 import { fetchPhotos, fetchPhotoJobs, photoPreviewUrl, overridePhotos, resolveDuplicate } from '../api';
-import { CircleCheck, Inbox, Info, Download, Folder } from 'lucide-react';
+import { CircleCheck, Inbox, Info, Download, Folder, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const statusVariant = { copied: 'green', skipped: 'orange', error: 'red', pending: 'accent', duplicate: 'red' };
 const resolutionVariant = { keep_overwrite: 'green', keep_rename: 'cyan', ignore: 'red', undecided: 'orange' };
@@ -81,6 +81,19 @@ const compareFields = [
   { key: 'date_taken', matchKey: 'match_date_taken', label: 'Date Taken', fmt: fmtDate },
 ];
 
+/* Generate page number buttons with ellipsis for large ranges */
+function generatePageNumbers(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, total, current, current - 1, current + 1]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const result = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('…');
+    result.push(sorted[i]);
+  }
+  return result;
+}
+
 function comparator(a, b, key, col) {
   let va, vb;
   if (col?.sortKey) {
@@ -114,6 +127,10 @@ export default function Photos() {
   const [selected, setSelected] = useState(new Set());
   const [overriding, setOverriding] = useState(false);
 
+  /* Pagination state */
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
   /* Sort state */
   const [sortCol, setSortCol] = useState(null);
   const [sortAsc, setSortAsc] = useState(true);
@@ -136,18 +153,22 @@ export default function Photos() {
     fetchPhotoJobs().then(setJobs).catch(console.error);
   }, []);
 
-  /* Reset sort + selection when tab changes */
+  /* Reset sort + selection + page when tab changes */
   useEffect(() => {
     setSortCol(null);
     setSortAsc(true);
     setSelected(new Set());
     lastClickedRef.current = null;
+    setPage(1);
     if (!isDupTab) setResolution('');
   }, [status]);
 
-  /* Load photos whenever filters change */
+  /* Load photos whenever filters or page change */
   const loadPhotos = useCallback(() => {
-    const params = {};
+    const params = {
+      limit: String(pageSize),
+      offset: String((page - 1) * pageSize),
+    };
     if (isDupTab) {
       params.isDuplicate = 'true';
       if (resolution) params.resolution = resolution;
@@ -159,13 +180,20 @@ export default function Photos() {
       setPhotos(d.photos);
       setTotal(d.total);
     }).catch(console.error);
-  }, [status, resolution, selectedJobId, isDupTab]);
+  }, [status, resolution, selectedJobId, isDupTab, page, pageSize]);
 
   useEffect(() => {
     loadPhotos();
     setSelected(new Set());
     lastClickedRef.current = null;
   }, [loadPhotos]);
+
+  /* Reset page when filters change (but not page itself) */
+  useEffect(() => {
+    setPage(1);
+  }, [resolution, selectedJobId]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   /* Sorted photos (memoised) */
   const sortedPhotos = useMemo(() => {
@@ -595,6 +623,74 @@ export default function Photos() {
               <button className="btn sm" onClick={() => handleBulkResolve('keep_overwrite')}>Overwrite All</button>
               <button className="btn sm" onClick={() => handleBulkResolve('keep_rename')}>Keep Both All</button>
               <button className="btn sm" onClick={() => handleBulkResolve('undecided')}>Reset All</button>
+            </div>
+          </div>
+        )}
+
+        {/* Pagination controls */}
+        {total > pageSize && (
+          <div className="pagination-bar">
+            <div className="pagination-info">
+              Showing {((page - 1) * pageSize) + 1}–{Math.min(page * pageSize, total)} of {total.toLocaleString()}
+            </div>
+            <div className="pagination-controls">
+              <button
+                className="btn sm"
+                disabled={page <= 1}
+                onClick={() => setPage(1)}
+                title="First page"
+              >
+                1
+              </button>
+              <button
+                className="btn sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+                title="Previous page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              {generatePageNumbers(page, totalPages).map((p, i) =>
+                p === '…' ? (
+                  <span key={`ellipsis-${i}`} className="pagination-ellipsis">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    className={`btn sm${p === page ? ' active' : ''}`}
+                    onClick={() => setPage(p)}
+                  >
+                    {p}
+                  </button>
+                )
+              )}
+              <button
+                className="btn sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                title="Next page"
+              >
+                <ChevronRight size={14} />
+              </button>
+              <button
+                className="btn sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(totalPages)}
+                title="Last page"
+              >
+                {totalPages}
+              </button>
+            </div>
+            <div className="pagination-size">
+              <select
+                className="form-select"
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              >
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+                <option value={200}>200 / page</option>
+              </select>
             </div>
           </div>
         )}
