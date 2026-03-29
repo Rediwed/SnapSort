@@ -152,6 +152,13 @@ a:hover {
   color: var(--accent-hover);
 }
 
+/* Prevent Safari iOS auto-zoom on focus (triggers when font-size < 16px) */
+@supports (-webkit-touch-callout: none) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
 /* ================================================================== */
 /*  Layout: Sidebar + Content                                          */
 /* ================================================================== */
@@ -386,6 +393,21 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* ---- Jobs page header ---- */
+.jobs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.jobs-header-actions {
+  display: flex;
+  gap: 8px;
+}
+.jobs-min-filters {
+  display: flex;
+  gap: 12px;
 }
 
 /* ================================================================== */
@@ -1136,6 +1158,32 @@ td.truncate {
 .pagination-info {
   white-space: nowrap;
 }
+.pagination-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #8b949e);
+  white-space: nowrap;
+}
+.page-jump-input {
+  width: 52px;
+  padding: 3px 6px;
+  font-size: 12px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+.page-jump-input::-webkit-inner-spin-button,
+.page-jump-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.page-jump-input {
+  -moz-appearance: textfield;
+}
 
 /* Checkbox column */
 .col-check {
@@ -1878,6 +1926,38 @@ td .badge.cyan {
   gap: 20px;
 }
 
+/* ── Settings: side-by-side card grid ── */
+.settings-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 700px) {
+  .settings-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Settings: stack cards in one grid cell ── */
+.settings-cards-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Settings: inline field pairs ── */
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 700px) {
+  .form-row-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ================================================================== */
 /*  Benchmark page                                                     */
 /* ================================================================== */
@@ -2131,6 +2211,69 @@ td .badge.cyan {
   }
   .page-body   { padding: 12px 12px 24px; }
 
+  /* ---- Jobs page mobile ---- */
+  .jobs-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .jobs-header-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .jobs-header-actions .btn {
+    flex: 1;
+    justify-content: center;
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+  /* Hide low-priority columns on mobile */
+  .col-job-dest,
+  .col-job-mode,
+  .col-job-profile,
+  .col-job-progress {
+    display: none;
+  }
+  .col-job-name {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .col-job-source {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .col-job-status .badge {
+    font-size: 10px;
+    padding: 2px 7px;
+  }
+  .col-job-actions .btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  /* Tighten all table cells on mobile */
+  table {
+    font-size: 12px;
+  }
+  thead th {
+    padding: 8px 8px;
+    font-size: 10px;
+  }
+  tbody td {
+    padding: 8px 8px;
+  }
+  td.truncate {
+    max-width: 120px;
+  }
+  /* New Job modal: stack min-filter inputs vertically */
+  .jobs-min-filters {
+    flex-direction: column;
+    gap: 0;
+  }
+
   .stat-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 10px;
@@ -2151,10 +2294,102 @@ td .badge.cyan {
   .photos-filter-bar {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
   }
   .photos-filter-bar .form-select {
     width: 100%;
     min-width: unset;
+  }
+  .photos-filter-bar .dup-sort-select {
+    margin-left: 0;
+  }
+  .photos-filter-bar .pill-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    width: 100%;
+  }
+  .photos-filter-bar .pill-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .photos-filter-bar .pill-tab {
+    padding: 6px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .search-box {
+    min-width: unset;
+    width: 100%;
+  }
+
+  /* Table: hide less important columns on mobile */
+  .col-extension,
+  .col-file_size,
+  .col-dimensions,
+  .col-processed_at {
+    display: none;
+  }
+  /* Tighten table cell padding */
+  thead th {
+    padding: 10px 10px;
+    font-size: 10px;
+  }
+  tbody td {
+    padding: 10px 10px;
+    font-size: 13px;
+  }
+  .col-check {
+    width: 32px;
+    padding: 0 4px !important;
+  }
+  .col-filename {
+    max-width: 140px;
+  }
+  .col-skip_reason {
+    max-width: 100px;
+  }
+
+  /* Pagination mobile */
+  .pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    font-size: 12px;
+  }
+  .pagination-info {
+    text-align: center;
+  }
+  .pagination-controls {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* Override bar (bottom action bar) */
+  .override-bar {
+    left: 50%;
+    width: calc(100% - 24px);
+    bottom: 16px;
+    padding: 10px 14px;
+    gap: 10px;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .dup-bulk-actions {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .dup-bulk-actions .btn {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .btn-override {
+    margin-left: 0;
+    width: 100%;
+    text-align: center;
   }
 
   /* Dup cards: stack side-by-side on mobile */
@@ -2172,11 +2407,47 @@ td .badge.cyan {
   }
   .dup-card-header {
     flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
   }
   .dup-card-actions {
     width: 100%;
     margin-left: 0;
     margin-top: 4px;
+    gap: 4px;
+  }
+  .dup-card-actions .btn {
+    min-width: 0;
+    flex: 1;
+    font-size: 11px;
+    padding: 5px 6px;
+  }
+  .dup-side {
+    padding: 8px 10px;
+  }
+  .dup-meta-grid {
+    padding: 0 10px;
+  }
+  .dup-meta-label {
+    font-size: 10px;
+  }
+  .dup-meta-val {
+    font-size: 11px;
+  }
+  .dup-notice {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .dup-select-all {
+    font-size: 12px;
+  }
+  .shift-hint {
+    display: none;
+  }
+
+  /* Hide photo hover preview on touch screens */
+  .photo-preview-tooltip {
+    display: none;
   }
 
   .modal {

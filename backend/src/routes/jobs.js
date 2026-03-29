@@ -216,11 +216,11 @@ router.post('/:id/override', async (req, res) => {
     return res.status(400).json({ error: 'photoIds array is required' });
   }
 
-  /* Fetch the selected photos & validate they are skipped */
+  /* Fetch the selected photos & validate they are skipped or scanned */
   const photos = getPhotosByIds(req.db, photoIds);
-  const skipped = photos.filter((p) => p.status === 'skipped' && p.job_id === job.id);
-  if (skipped.length === 0) {
-    return res.status(400).json({ error: 'No skipped photos found for the given IDs' });
+  const eligible = photos.filter((p) => (p.status === 'skipped' || p.status === 'scanned') && p.job_id === job.id);
+  if (eligible.length === 0) {
+    return res.status(400).json({ error: 'No skipped or scanned photos found for the given IDs' });
   }
 
   /* Mark job as overriding */
@@ -231,7 +231,7 @@ router.post('/:id/override', async (req, res) => {
   let errorCount = 0;
   const results = [];
 
-  for (const photo of skipped) {
+  for (const photo of eligible) {
     try {
       if (!fs.existsSync(photo.src_path)) {
         results.push({ id: photo.id, error: 'Source file not found' });
@@ -264,11 +264,12 @@ router.post('/:id/override', async (req, res) => {
     }
   }
 
-  /* Adjust job counters */
+  /* Adjust job counters — count how many were skipped vs scanned */
+  const skippedOverridden = eligible.filter((p) => p.status === 'skipped').length;
   const updatedJob = getJob(req.db, job.id);
   updateJobStatus(req.db, job.id, 'done', {
     copied: (updatedJob.copied || 0) + copiedCount,
-    skipped: Math.max(0, (updatedJob.skipped || 0) - copiedCount),
+    skipped: Math.max(0, (updatedJob.skipped || 0) - Math.min(skippedOverridden, copiedCount)),
     errors: (updatedJob.errors || 0) + errorCount,
   });
 

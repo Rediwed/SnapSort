@@ -167,7 +167,7 @@ function notifyJobStarted(db, job) {
   const body = `Mode: ${mode}\nSource: ${job.source_dir}\nDest: ${job.dest_dir}`;
 
   if (isEnabled(settings, 'ntfy_on_job_start')) {
-    sendQuiet(settings, { title, message: body, priority: '3', tags: 'arrow_forward' });
+    sendQuiet(settings, { title, message: body, priority: '3' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_job_start')) {
     broadcast({ type: 'job_started', title, body });
@@ -191,7 +191,6 @@ function notifyJobProgressNow(settings, job) {
     title: `⏳ ${label} — ${pct(job.processed, job.total_files)}`,
     message: lines.join('\n'),
     priority: '2',
-    tags: 'hourglass_flowing_sand',
   });
 }
 
@@ -213,7 +212,7 @@ function notifyJobCompleted(db, job) {
   const body = lines.join('\n');
 
   if (isEnabled(settings, 'ntfy_on_job_complete')) {
-    sendQuiet(settings, { title, message: body, priority: '3', tags: 'white_check_mark' });
+    sendQuiet(settings, { title, message: body, priority: '3' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_job_complete')) {
     broadcast({ type: 'job_completed', title, body });
@@ -236,7 +235,7 @@ function notifyJobError(db, job, errorMessage) {
   const body = lines.join('\n');
 
   if (isEnabled(settings, 'ntfy_on_job_error')) {
-    sendQuiet(settings, { title, message: body, priority: '4', tags: 'x' });
+    sendQuiet(settings, { title, message: body, priority: '4' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_job_error')) {
     broadcast({ type: 'job_error', title, body });
@@ -258,7 +257,7 @@ function notifyJobCancelled(db, job) {
   const body = lines.join('\n');
 
   if (isEnabled(settings, 'ntfy_on_job_complete')) {
-    sendQuiet(settings, { title, message: body, priority: '3', tags: 'no_entry_sign' });
+    sendQuiet(settings, { title, message: body, priority: '3' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_job_complete')) {
     broadcast({ type: 'job_cancelled', title, body });
@@ -273,7 +272,7 @@ function notifyDriveScanStarted(db, drivePath) {
   const body = `Scanning: ${drivePath}`;
 
   if (isEnabled(settings, 'ntfy_on_drive_scan')) {
-    sendQuiet(settings, { title, message: body, priority: '2', tags: 'mag' });
+    sendQuiet(settings, { title, message: body, priority: '2' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_drive_scan')) {
     broadcast({ type: 'drive_scan_started', title, body });
@@ -295,7 +294,7 @@ function notifyDriveScanCompleted(db, drivePath, result) {
   const body = lines.join('\n');
 
   if (isEnabled(settings, 'ntfy_on_drive_scan')) {
-    sendQuiet(settings, { title, message: body, priority: '2', tags: 'white_check_mark' });
+    sendQuiet(settings, { title, message: body, priority: '2' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_drive_scan')) {
     broadcast({ type: 'drive_scan_completed', title, body });
@@ -314,7 +313,7 @@ function notifyDriveAttached(db, drive) {
   const body = lines.join('\n');
 
   if (isEnabled(settings, 'ntfy_on_drive_attach')) {
-    sendQuiet(settings, { title, message: body, priority: '3', tags: 'floppy_disk' });
+    sendQuiet(settings, { title, message: body, priority: '3' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_drive_attach')) {
     broadcast({ type: 'drive_attached', title, body });
@@ -330,7 +329,7 @@ function notifyDriveEjected(db, drive) {
   const body = `Path: ${drive.path}`;
 
   if (isEnabled(settings, 'ntfy_on_drive_attach')) {
-    sendQuiet(settings, { title, message: body, priority: '2', tags: 'eject' });
+    sendQuiet(settings, { title, message: body, priority: '2' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_drive_attach')) {
     broadcast({ type: 'drive_ejected', title, body });
@@ -346,7 +345,7 @@ function notifyDriveLost(db, drive) {
   const body = `Path: ${drive.path}\nThe drive disappeared unexpectedly. Check the connection.`;
 
   if (isEnabled(settings, 'ntfy_on_drive_lost')) {
-    sendQuiet(settings, { title, message: body, priority: '4', tags: 'warning' });
+    sendQuiet(settings, { title, message: body, priority: '4' });
   }
   if (isBrowserEnabled(settings, 'ntfy_on_drive_lost')) {
     broadcast({ type: 'drive_lost', title, body });
@@ -360,7 +359,6 @@ function sendTestNotification(db) {
     title: '🔔 SnapSort Test',
     message: 'If you see this, ntfy notifications are working!',
     priority: '3',
-    tags: 'bell',
   });
 }
 

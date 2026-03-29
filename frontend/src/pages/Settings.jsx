@@ -320,33 +320,34 @@ export default function Settings() {
         <PillTabs tabs={SETTINGS_TABS} active={activeTab} onChange={setActiveTab} />
 
         {activeTab === 'filters' && <>
+        <div className="settings-cards-grid">
         {/* ── Filter & Quality ─────────────────────────────── */}
         <div className="card">
           <div className="card-header"><h3>Filter &amp; Quality</h3></div>
-          {settingsMeta.map((s) => (
-            <div className="form-group" key={s.key}>
-              {s.type === 'toggle' ? (
-                <label className="form-toggle">
-                  <input
-                    type="checkbox"
-                    checked={values[s.key] === 'true'}
-                    onChange={(e) => handleChange(s.key, e.target.checked ? 'true' : 'false')}
-                  />
-                  <span>{s.label}</span>
-                </label>
-              ) : (
-                <>
-                  <label>{s.label}</label>
-                  <input
-                    className="form-input mono"
-                    type="number"
-                    value={values[s.key] || ''}
-                    onChange={(e) => handleChange(s.key, e.target.value)}
-                  />
-                </>
-              )}
+          <div className="form-row-2">
+            <div className="form-group">
+              <label>Min Width (px)</label>
+              <input className="form-input mono" type="number" value={values.min_width || ''} onChange={(e) => handleChange('min_width', e.target.value)} />
             </div>
-          ))}
+            <div className="form-group">
+              <label>Min Height (px)</label>
+              <input className="form-input mono" type="number" value={values.min_height || ''} onChange={(e) => handleChange('min_height', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Min File Size (bytes)</label>
+            <input className="form-input mono" type="number" value={values.min_filesize || ''} onChange={(e) => handleChange('min_filesize', e.target.value)} />
+          </div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label>Dedup Strict Threshold (%)</label>
+              <input className="form-input mono" type="number" value={values.dedup_strict_threshold || ''} onChange={(e) => handleChange('dedup_strict_threshold', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Dedup Log Threshold (%)</label>
+              <input className="form-input mono" type="number" value={values.dedup_log_threshold || ''} onChange={(e) => handleChange('dedup_log_threshold', e.target.value)} />
+            </div>
+          </div>
         </div>
 
         {/* ── File Formats ─────────────────────────────────── */}
@@ -380,6 +381,7 @@ export default function Settings() {
             <button className="btn sm" onClick={addExt}>Add</button>
           </div>
         </div>
+        </div>{/* end settings-cards-grid */}
         </>}
 
         {activeTab === 'performance' && <>
@@ -505,6 +507,7 @@ export default function Settings() {
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
 
+          <div className="form-row-2">
           {/* Enable Multi-threading */}
           <div className="form-group">
             <label className="form-toggle">
@@ -536,7 +539,9 @@ export default function Settings() {
               Process files one-by-one in order. Best for HDDs to avoid random seeks.
             </p>
           </div>
+          </div>
 
+          <div className="form-row-2">
           {/* Max Workers */}
           <div className="form-group">
             <label>Worker Threads <span className="mono badge">{maxWorkers}</span></label>
@@ -573,7 +578,9 @@ export default function Settings() {
               <span>16</span>
             </div>
           </div>
+          </div>
 
+          <div className="form-row-2">
           {/* Batch Size */}
           <div className="form-group">
             <label>Batch Size <span className="mono badge">{batchSize}</span></label>
@@ -593,6 +600,27 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* Concurrent Copies */}
+          <div className="form-group">
+            <label>Concurrent Copies <span className="mono badge">{concurrentCopies}</span></label>
+            <input
+              type="range"
+              className="form-range"
+              min={1}
+              max={16}
+              value={concurrentCopies}
+              disabled={isEditingBuiltIn}
+              onChange={(e) => handleProfileEdit('concurrent_copies', Number(e.target.value))}
+            />
+            <div className="range-labels">
+              <span>1</span>
+              <span>Parallel file copy operations</span>
+              <span>16</span>
+            </div>
+          </div>
+          </div>
+
+          <div className="form-row-2">
           {/* Enable Fast Hashing */}
           <div className="form-group">
             <label className="form-toggle">
@@ -627,29 +655,12 @@ export default function Settings() {
               <span>32,768</span>
             </div>
           </div>
-
-          {/* Concurrent Copies */}
-          <div className="form-group">
-            <label>Concurrent Copies <span className="mono badge">{concurrentCopies}</span></label>
-            <input
-              type="range"
-              className="form-range"
-              min={1}
-              max={16}
-              value={concurrentCopies}
-              disabled={isEditingBuiltIn}
-              onChange={(e) => handleProfileEdit('concurrent_copies', Number(e.target.value))}
-            />
-            <div className="range-labels">
-              <span>1</span>
-              <span>Parallel file copy operations</span>
-              <span>16</span>
-            </div>
           </div>
         </div>
         </>}
 
         {activeTab === 'notifications' && <>
+        <div className="settings-cards-grid">
         {/* ── Card 1: Notification Channels ────────────────── */}
         <div className="card">
           <div className="card-header">
@@ -659,78 +670,74 @@ export default function Settings() {
             Enable one or both channels to receive notifications for the events below.
           </p>
 
-          <div className="notify-channels-grid">
-            {/* Browser notifications */}
-            <div className="notify-channel-cell">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <label className="form-toggle" style={{ margin: 0 }}>
-                  <input
-                    type="checkbox"
-                    checked={values.browser_notify_enabled === 'true'}
-                    onChange={(e) => handleChange('browser_notify_enabled', e.target.checked ? 'true' : 'false')}
-                  />
-                  <span><Monitor size={14} style={{ marginRight: 6, verticalAlign: -2, opacity: 0.6 }} />Browser</span>
-                </label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {browserNotifyTestResult === 'sent' && <span style={{ color: 'var(--green)', fontSize: 12 }}>Sent!</span>}
-                  {browserNotifyTestResult && browserNotifyTestResult !== 'sent' && <span style={{ color: 'var(--red)', fontSize: 12 }}>{browserNotifyTestResult}</span>}
-                  <button
-                    className="btn sm"
-                    disabled={browserNotifyTesting || values.browser_notify_enabled !== 'true'}
-                    onClick={handleBrowserNotifyTest}
-                  >
-                    <Send size={14} /> {browserNotifyTesting ? 'Sending…' : 'Test'}
-                  </button>
-                </div>
-              </div>
-              {'Notification' in window && Notification.permission === 'denied' && values.browser_notify_enabled === 'true' && (
-                <p className="form-hint" style={{ color: 'var(--red)', marginBottom: 4 }}>
-                  Notifications are blocked. Allow them in your browser's site settings.
-                </p>
-              )}
-              <p className="form-hint" style={{ margin: 0 }}>
-                Native desktop &amp; Android notifications. On iOS, add SnapSort to your home screen (requires iOS 16.4+).
-              </p>
-            </div>
-
-            {/* ntfy.sh */}
-            <div className="notify-channel-cell">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <label className="form-toggle" style={{ margin: 0 }}>
-                  <input
-                    type="checkbox"
-                    checked={values.ntfy_enabled === 'true'}
-                    onChange={(e) => handleChange('ntfy_enabled', e.target.checked ? 'true' : 'false')}
-                  />
-                  <span><Bell size={14} style={{ marginRight: 6, verticalAlign: -2, opacity: 0.6 }} />ntfy.sh</span>
-                </label>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {ntfyTestResult === 'sent' && <span style={{ color: 'var(--green)', fontSize: 12 }}>Sent!</span>}
-                  {ntfyTestResult && ntfyTestResult !== 'sent' && <span style={{ color: 'var(--red)', fontSize: 12 }}>{ntfyTestResult}</span>}
-                  <button
-                    className="btn sm"
-                    disabled={ntfyTesting || values.ntfy_enabled !== 'true'}
-                    onClick={handleNtfyTest}
-                  >
-                    <Send size={14} /> {ntfyTesting ? 'Sending…' : 'Test'}
-                  </button>
-                  <button
-                    className="btn sm"
-                    disabled={values.ntfy_enabled !== 'true'}
-                    onClick={() => setNtfyConfigOpen(true)}
-                  >
-                    <SettingsIcon size={14} /> Configure
-                  </button>
-                </div>
-              </div>
-              <p className="form-hint" style={{ margin: 0 }}>
-                Push notifications via <a href="https://ntfy.sh" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>ntfy.sh</a> or a self-hosted server.
-                {values.ntfy_enabled === 'true' && values.ntfy_topic && (
-                  <> Topic: <span className="mono" style={{ opacity: 0.8 }}>{values.ntfy_topic}</span></>
-                )}
-              </p>
+          {/* Browser notifications */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <label className="form-toggle" style={{ margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={values.browser_notify_enabled === 'true'}
+                onChange={(e) => handleChange('browser_notify_enabled', e.target.checked ? 'true' : 'false')}
+              />
+              <span><Monitor size={14} style={{ marginRight: 6, verticalAlign: -2, opacity: 0.6 }} />Browser</span>
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {browserNotifyTestResult === 'sent' && <span style={{ color: 'var(--green)', fontSize: 12 }}>Sent!</span>}
+              {browserNotifyTestResult && browserNotifyTestResult !== 'sent' && <span style={{ color: 'var(--red)', fontSize: 12 }}>{browserNotifyTestResult}</span>}
+              <button
+                className="btn sm"
+                disabled={browserNotifyTesting || values.browser_notify_enabled !== 'true'}
+                onClick={handleBrowserNotifyTest}
+              >
+                <Send size={14} /> {browserNotifyTesting ? 'Sending…' : 'Test'}
+              </button>
             </div>
           </div>
+          {'Notification' in window && Notification.permission === 'denied' && values.browser_notify_enabled === 'true' && (
+            <p className="form-hint" style={{ color: 'var(--red)', marginBottom: 4 }}>
+              Notifications are blocked. Allow them in your browser's site settings.
+            </p>
+          )}
+          <p className="form-hint">
+            Native desktop &amp; Android notifications. On iOS, add SnapSort to your home screen (requires iOS 16.4+).
+          </p>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+
+          {/* ntfy.sh */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <label className="form-toggle" style={{ margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={values.ntfy_enabled === 'true'}
+                onChange={(e) => handleChange('ntfy_enabled', e.target.checked ? 'true' : 'false')}
+              />
+              <span><Bell size={14} style={{ marginRight: 6, verticalAlign: -2, opacity: 0.6 }} />ntfy.sh</span>
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {ntfyTestResult === 'sent' && <span style={{ color: 'var(--green)', fontSize: 12 }}>Sent!</span>}
+              {ntfyTestResult && ntfyTestResult !== 'sent' && <span style={{ color: 'var(--red)', fontSize: 12 }}>{ntfyTestResult}</span>}
+              <button
+                className="btn sm"
+                disabled={ntfyTesting || values.ntfy_enabled !== 'true'}
+                onClick={handleNtfyTest}
+              >
+                <Send size={14} /> {ntfyTesting ? 'Sending…' : 'Test'}
+              </button>
+              <button
+                className="btn sm"
+                disabled={values.ntfy_enabled !== 'true'}
+                onClick={() => setNtfyConfigOpen(true)}
+              >
+                <SettingsIcon size={14} /> Configure
+              </button>
+            </div>
+          </div>
+          <p className="form-hint" style={{ margin: 0 }}>
+            Push notifications via <a href="https://ntfy.sh" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>ntfy.sh</a> or a self-hosted server.
+            {values.ntfy_enabled === 'true' && values.ntfy_topic && (
+              <> Topic: <span className="mono" style={{ opacity: 0.8 }}>{values.ntfy_topic}</span></>
+            )}
+          </p>
         </div>
 
         {/* ── Card 2: Events & Interval ────────────────────── */}
@@ -788,6 +795,30 @@ export default function Settings() {
                   disabled={values.ntfy_enabled !== 'true' && values.browser_notify_enabled !== 'true'}
                 />
                 <span>Drive Scan Start / Complete</span>
+              </label>
+            </div>
+
+            <div className="form-group">
+              <label className="form-toggle">
+                <input
+                  type="checkbox"
+                  checked={values.ntfy_on_drive_attach === 'true'}
+                  onChange={(e) => handleChange('ntfy_on_drive_attach', e.target.checked ? 'true' : 'false')}
+                  disabled={values.ntfy_enabled !== 'true' && values.browser_notify_enabled !== 'true'}
+                />
+                <span>Drive Connected / Ejected</span>
+              </label>
+            </div>
+
+            <div className="form-group">
+              <label className="form-toggle">
+                <input
+                  type="checkbox"
+                  checked={values.ntfy_on_drive_lost === 'true'}
+                  onChange={(e) => handleChange('ntfy_on_drive_lost', e.target.checked ? 'true' : 'false')}
+                  disabled={values.ntfy_enabled !== 'true' && values.browser_notify_enabled !== 'true'}
+                />
+                <span>Drive Unexpectedly Lost</span>
               </label>
             </div>
 
@@ -913,9 +944,12 @@ export default function Settings() {
             </>
           )}
         </Modal>
+        </div>{/* end settings-cards-grid */}
         </>}
 
         {activeTab === 'general' && <>
+        <div className="settings-cards-grid">
+        <div className="settings-cards-stack">
         {/* ── Appearance ──────────────────── */}
         <div className="card">
           <div className="card-header"><h3>Appearance</h3></div>
@@ -943,6 +977,25 @@ export default function Settings() {
             <p className="form-hint">Choose between dark, light, or follow your operating system preference.</p>
           </div>
         </div>
+
+        {/* ── Diagnostics Page Toggle ──────────────────── */}
+        <div className="card">
+          <div className="card-header"><h3>Diagnostics</h3></div>
+          <div className="form-group">
+            <label className="form-toggle">
+              <input
+                type="checkbox"
+                checked={values.diagnostics_enabled === 'true'}
+                onChange={(e) => handleChange('diagnostics_enabled', e.target.checked ? 'true' : 'false')}
+              />
+              <span>Enable Diagnostics Page</span>
+            </label>
+            <p className="form-hint">
+              Show a dedicated Diagnostics page in the sidebar with system info, volume mounts, and recent logs.
+            </p>
+          </div>
+        </div>
+        </div>{/* end settings-cards-stack */}
 
         {/* ── Date & Time Display ──────────────────── */}
         <div className="card">
@@ -979,24 +1032,7 @@ export default function Settings() {
             Preview: {fmtDateTime(new Date().toISOString(), { date_format: values.date_format || 'system', time_format: values.time_format || 'system' })}
           </p>
         </div>
-
-        {/* ── Diagnostics Page Toggle ──────────────────── */}
-        <div className="card">
-          <div className="card-header"><h3>Diagnostics</h3></div>
-          <div className="form-group">
-            <label className="form-toggle">
-              <input
-                type="checkbox"
-                checked={values.diagnostics_enabled === 'true'}
-                onChange={(e) => handleChange('diagnostics_enabled', e.target.checked ? 'true' : 'false')}
-              />
-              <span>Enable Diagnostics Page</span>
-            </label>
-            <p className="form-hint">
-              Show a dedicated Diagnostics page in the sidebar with system info, volume mounts, and recent logs.
-            </p>
-          </div>
-        </div>
+        </div>{/* end settings-cards-grid */}
         </>}
       </div>
 
@@ -1004,7 +1040,7 @@ export default function Settings() {
       <div
         style={{
           position: 'fixed',
-          bottom: hasChanges ? 24 : -80,
+          bottom: hasChanges ? 24 : -120,
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 1000,

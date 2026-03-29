@@ -21,7 +21,7 @@ export default function DataTable({ columns, rows, emptyMessage = 'No data', onR
         <thead>
           <tr>
             {columns.map((col) => (
-              <th key={col.key}>{col.header}</th>
+              <th key={col.key} className={col.className || ''}>{col.header}</th>
             ))}
           </tr>
         </thead>

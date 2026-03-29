@@ -106,15 +106,15 @@ export default function Jobs() {
   };
 
   const columns = [
-    { key: 'name', header: 'Name', className: 'truncate', render: (r) => r.name || <span className="mono" style={{ opacity: 0.4 }}>{r.id.slice(0, 8)}</span> },
-    { key: 'source_dir', header: 'Source', className: 'truncate', render: (r) => r.source_dir.split('/').pop() },
-    { key: 'dest_dir', header: 'Destination', className: 'truncate', render: (r) => r.dest_dir.split('/').pop() },
-    { key: 'mode', header: 'Mode', render: (r) => <Badge variant="cyan">{r.mode}</Badge> },
-    { key: 'profile', header: 'Profile', render: (r) => {
+    { key: 'name', header: 'Name', className: 'truncate col-job-name', render: (r) => r.name || <span className="mono" style={{ opacity: 0.4 }}>{r.id.slice(0, 8)}</span> },
+    { key: 'source_dir', header: 'Source', className: 'truncate col-job-source', render: (r) => r.source_dir.split('/').pop() },
+    { key: 'dest_dir', header: 'Destination', className: 'truncate col-job-dest', render: (r) => r.dest_dir.split('/').pop() },
+    { key: 'mode', header: 'Mode', className: 'col-job-mode', render: (r) => <Badge variant="cyan">{r.mode}</Badge> },
+    { key: 'profile', header: 'Profile', className: 'col-job-profile', render: (r) => {
       const p = profiles.find((pr) => pr.id === r.performance_profile);
       return p ? <Badge variant="pink">{p.name}</Badge> : <span className="mono" style={{ opacity: 0.4 }}>default</span>;
     }},
-    { key: 'status', header: 'Status', render: (r) => (
+    { key: 'status', header: 'Status', className: 'col-job-status', render: (r) => (
       <div>
         <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge>
         {r.status === 'error' && r.error_message && (
@@ -123,11 +123,11 @@ export default function Jobs() {
       </div>
     )},
     {
-      key: 'progress', header: 'Progress', className: 'mono', render: (r) =>
+      key: 'progress', header: 'Progress', className: 'mono col-job-progress', render: (r) =>
         r.status === 'running' ? pctBar(r) : `${r.processed}/${r.total_files || '?'}`,
     },
     {
-      key: 'actions', header: 'Actions', render: (r) => (
+      key: 'actions', header: 'Actions', className: 'col-job-actions', render: (r) => (
         <div className="flex gap-8" onClick={(e) => e.stopPropagation()}>
           {r.status === 'pending' && <button className="btn sm primary" onClick={() => startJob(r.id).then(load).catch((e) => { alert(e.message); load(); })}>Start</button>}
           {r.status === 'running' && <button className="btn sm danger" onClick={() => cancelJob(r.id).then(load)}>Cancel</button>}
@@ -139,12 +139,12 @@ export default function Jobs() {
 
   return (
     <>
-      <div className="page-header flex justify-between items-center">
+      <div className="page-header jobs-header">
         <div>
           <h2>Jobs</h2>
           <p>Manage photo organization runs</p>
         </div>
-        <div className="flex gap-8">
+        <div className="jobs-header-actions">
           {diagEnabled && (
             <button
               className="btn"
@@ -196,7 +196,11 @@ export default function Jobs() {
           <label>Mode</label>
           <select className="form-select" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
             <option value="normal">Normal — scan & copy all</option>
+            <option value="scan">Scan only — preview without copying</option>
           </select>
+          {form.mode === 'scan' && (
+            <p className="form-hint">Scans source and destination for images and detects duplicates, but does not copy any files. Review results on the Photos page.</p>
+          )}
         </div>
         <div className="form-group">
           <label>Performance Profile</label>
@@ -234,7 +238,7 @@ export default function Jobs() {
             );
           })()}
         </div>
-        <div className="flex gap-12">
+        <div className="jobs-min-filters">
           <div className="form-group" style={{ flex: 1 }}>
             <label>Min Width (px)</label>
             <input className="form-input mono" type="number" value={form.minWidth} onChange={(e) => setForm({ ...form, minWidth: Number(e.target.value) })} />

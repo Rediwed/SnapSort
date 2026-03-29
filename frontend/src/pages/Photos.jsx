@@ -8,13 +8,14 @@ import PhotoDetailModal from '../components/PhotoDetailModal';
 import { fetchPhotos, fetchPhotoJobs, photoPreviewUrl, overridePhotos, resolveDuplicate } from '../api';
 import { CircleCheck, Inbox, Info, Download, Folder, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
-const statusVariant = { copied: 'green', skipped: 'orange', error: 'red', pending: 'accent', duplicate: 'red' };
+const statusVariant = { copied: 'green', skipped: 'orange', error: 'red', pending: 'accent', duplicate: 'red', scanned: 'cyan' };
 const resolutionVariant = { keep_overwrite: 'green', keep_rename: 'cyan', ignore: 'red', undecided: 'orange' };
 const resolutionLabel = { keep_overwrite: 'overwrite', keep_rename: 'keep both', ignore: 'skip', undecided: 'undecided' };
 
 const tabs = [
   { value: 'copied',    label: 'Copied' },
   { value: 'skipped',   label: 'Skipped' },
+  { value: 'scanned',   label: 'Scanned' },
   { value: 'duplicate', label: 'Duplicates' },
   { value: 'error',     label: 'Errors' },
 ];
@@ -27,7 +28,7 @@ const resolutionTabs = [
   { value: 'ignore',        label: 'Skip' },
 ];
 
-const tabLabels = { copied: 'copied', skipped: 'skipped', duplicate: 'duplicate', error: 'error' };
+const tabLabels = { copied: 'copied', skipped: 'skipped', scanned: 'scanned', duplicate: 'duplicate', error: 'error' };
 
 const fmtPath = (p) => {
   if (!p) return '—';
@@ -101,7 +102,7 @@ const dupSortKeys = {
 
 export default function Photos() {
   const settings = useSettings();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [status, setStatus] = useState('copied');
 
   const fmtJobLabel = (job) => {
@@ -121,8 +122,25 @@ export default function Photos() {
   const [overriding, setOverriding] = useState(false);
 
   /* Pagination state */
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [page, setPageRaw] = useState(() => {
+    const p = Number(searchParams.get('page'));
+    return p >= 1 ? p : 1;
+  });
+  const [pageSize, setPageSize] = useState(() => {
+    const s = Number(searchParams.get('pageSize'));
+    return [25, 50, 100, 200].includes(s) ? s : 50;
+  });
+  const setPage = useCallback((v) => {
+    setPageRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      setSearchParams((sp) => {
+        const p = new URLSearchParams(sp);
+        if (next <= 1) p.delete('page'); else p.set('page', String(next));
+        return p;
+      }, { replace: true });
+      return next;
+    });
+  }, [setSearchParams]);
 
   /* Sort state */
   const [sortCol, setSortCol] = useState(null);
@@ -142,7 +160,8 @@ export default function Photos() {
   const lastClickedRef = useRef(null);
 
   const isDupTab = status === 'duplicate';
-  const columns = status === 'copied'
+  const isScannedTab = status === 'scanned';
+  const columns = (status === 'copied' || status === 'scanned')
     ? baseColumns.filter((c) => c.key !== 'skip_reason')
     : baseColumns;
 
@@ -234,7 +253,9 @@ export default function Photos() {
   /* ── Selection with shift-click ────────────────────────────────── */
   const selectablePhotos = isDupTab
     ? sortedPhotos
-    : sortedPhotos.filter((p) => p.status === 'skipped');
+    : isScannedTab
+      ? sortedPhotos
+      : sortedPhotos.filter((p) => p.status === 'skipped');
   const allSelectableSelected = selectablePhotos.length > 0 && selectablePhotos.every((p) => selected.has(p.id));
 
   const toggleOne = (id, index, e) => {
@@ -268,7 +289,7 @@ export default function Photos() {
     lastClickedRef.current = null;
   };
 
-  /* Override handler (skipped photos) */
+  /* Override handler (skipped or scanned photos) */
   const handleOverride = async () => {
     if (selected.size === 0) return;
     const selectedPhotos = photos.filter((p) => selected.has(p.id));
@@ -277,7 +298,9 @@ export default function Photos() {
       alert('Please select photos from only one job at a time.');
       return;
     }
-    if (!confirm(`Copy ${selected.size} skipped photo${selected.size > 1 ? 's' : ''} anyway?`)) return;
+    const isScanned = selectedPhotos[0]?.status === 'scanned';
+    const label = isScanned ? 'scanned' : 'skipped';
+    if (!confirm(`Copy ${selected.size} ${label} photo${selected.size > 1 ? 's' : ''} to destination?`)) return;
     setOverriding(true);
     try {
       const result = await overridePhotos(jobId, [...selected]);
@@ -285,10 +308,10 @@ export default function Photos() {
       loadPhotos();
       fetchPhotoJobs().then(setJobs).catch(console.error);
       if (result.errors > 0) {
-        alert(`Override complete: ${result.overridden} copied, ${result.errors} failed.`);
+        alert(`Copy complete: ${result.overridden} copied, ${result.errors} failed.`);
       }
     } catch (err) {
-      alert(`Override failed: ${err.message}`);
+      alert(`Copy failed: ${err.message}`);
     } finally {
       setOverriding(false);
     }
@@ -401,8 +424,9 @@ export default function Photos() {
         {photos.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">{isDupTab ? <CircleCheck size={32} /> : <Inbox size={32} />}</div>
-            <h3>{isDupTab ? 'No duplicates found' : 'No photos found'}</h3>
+            <h3>{isDupTab ? 'No duplicates found' : isScannedTab ? 'No scanned photos' : 'No photos found'}</h3>
             {isDupTab && <p>Run a job with dedup enabled to detect duplicate photos.</p>}
+            {isScannedTab && <p>Create a job in scan mode to preview photos without copying.</p>}
           </div>
         ) : isDupTab ? (
           /* ── Duplicate comparison cards ────────────────────────── */
@@ -568,14 +592,14 @@ export default function Photos() {
                         type="checkbox"
                         checked={allSelectableSelected}
                         onChange={toggleAllSelectable}
-                        title="Select all skipped photos"
+                        title={isScannedTab ? 'Select all scanned photos' : 'Select all skipped photos'}
                       />
                     )}
                   </th>
                   {columns.map((col) => (
                     <th
                       key={col.key}
-                      className="sortable-th"
+                      className={`sortable-th col-${col.key}`}
                       onClick={() => handleSort(col.key)}
                     >
                       {col.label}
@@ -588,7 +612,7 @@ export default function Photos() {
               </thead>
               <tbody>
                 {sortedPhotos.map((photo, idx) => {
-                  const isSelectable = photo.status === 'skipped';
+                  const isSelectable = photo.status === 'skipped' || photo.status === 'scanned';
                   return (
                     <tr key={photo.id} className={selected.has(photo.id) ? 'row-selected' : ''}>
                       <td className="col-check">
@@ -600,7 +624,7 @@ export default function Photos() {
                           />
                         )}
                       </td>
-                      <td className="truncate">
+                      <td className="truncate col-filename">
                         <span
                           className="filename-preview clickable"
                           title={photo.filename}
@@ -613,13 +637,13 @@ export default function Photos() {
                         </span>
                         {photo.overridden_at && <Badge variant="cyan">overridden</Badge>}
                       </td>
-                      <td className="mono">{photo.extension}</td>
-                      <td><Badge variant={statusVariant[photo.status] || 'accent'}>{photo.status}</Badge></td>
-                      {status !== 'copied' && <td className="truncate">{photo.skip_reason || '—'}</td>}
-                      <td className="mono">{fmtSize(photo.file_size)}</td>
-                      <td className="mono">{photo.width ? `${photo.width}×${photo.height}` : '—'}</td>
-                      <td>{fmtDate(photo.date_taken, settings)}</td>
-                      <td>{fmtDateTime(photo.processed_at, settings)}</td>
+                      <td className="mono col-extension">{photo.extension}</td>
+                      <td className="col-status"><Badge variant={statusVariant[photo.status] || 'accent'}>{photo.status}</Badge></td>
+                      {status !== 'copied' && <td className="truncate col-skip_reason">{photo.skip_reason || '—'}</td>}
+                      <td className="mono col-file_size">{fmtSize(photo.file_size)}</td>
+                      <td className="mono col-dimensions">{photo.width ? `${photo.width}×${photo.height}` : '—'}</td>
+                      <td className="col-date_taken">{fmtDate(photo.date_taken, settings)}</td>
+                      <td className="col-processed_at">{fmtDateTime(photo.processed_at, settings)}</td>
                     </tr>
                   );
                 })}
@@ -629,7 +653,7 @@ export default function Photos() {
         )}
 
         {/* Bulk action bar — sticky at bottom */}
-        {selected.size > 0 && !isDupTab && (
+        {selected.size > 0 && !isDupTab && !isScannedTab && (
           <div className="override-bar">
             <span>{selected.size} skipped photo{selected.size > 1 ? 's' : ''} selected</span>
             <button
@@ -638,6 +662,19 @@ export default function Photos() {
               disabled={overriding}
             >
               {overriding ? 'Copying…' : `Copy ${selected.size} Anyway`}
+            </button>
+          </div>
+        )}
+
+        {selected.size > 0 && isScannedTab && (
+          <div className="override-bar">
+            <span>{selected.size} scanned photo{selected.size > 1 ? 's' : ''} selected</span>
+            <button
+              className="btn btn-override"
+              onClick={handleOverride}
+              disabled={overriding}
+            >
+              {overriding ? 'Copying…' : `Copy ${selected.size} to Destination`}
             </button>
           </div>
         )}
@@ -706,6 +743,22 @@ export default function Photos() {
               >
                 {totalPages}
               </button>
+            </div>
+            <div className="pagination-jump">
+              <span>Go to</span>
+              <input
+                type="number"
+                className="form-input page-jump-input"
+                min={1}
+                max={totalPages}
+                placeholder={page}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = Math.max(1, Math.min(totalPages, Number(e.target.value)));
+                    if (val) { setPage(val); e.target.value = ''; }
+                  }
+                }}
+              />
             </div>
             <div className="pagination-size">
               <select

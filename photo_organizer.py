@@ -509,11 +509,12 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
         # look up the most recent record for this src_path to get the
         # similarity score and matched path — no log-parsing needed.
         if dedup_index:
+            _log_thr = getattr(dedup_index, 'log_threshold', 70.0)
             with dedup_index._lock:
                 for rec in reversed(list(dedup_index._records.values())):
                     if rec.get("src_path") == src_path:
                         sim = rec.get("similarity")
-                        if sim is not None and sim > 0:
+                        if sim is not None and sim >= _log_thr:
                             result["similarity"] = float(sim)
                             result["duplicate_of"] = (
                                 rec.get("matched_final_path")
@@ -568,6 +569,97 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
         pass
 
     return result
+
+
+def scan_single_file(src_path, hash_func, dedup_index):
+    """Scan a single photo file — extract metadata without copying.
+
+    Returns a result dict with:
+      status      – "scanned" | "error"
+      src_path    – the original path
+      filename    – basename
+      file_size   – source file size in bytes
+      width       – image width  (or None)
+      height      – image height (or None)
+      dpi         – dots per inch (or None)
+      date_taken  – ISO-format string (or None)
+      hash        – file hash (or None)
+      duplicate_of – matched path if duplicate detected (or None)
+      similarity  – dedup similarity score (or None)
+    """
+    result = {
+        "status": "scanned",
+        "src_path": src_path,
+        "dest_path": None,
+        "filename": os.path.basename(src_path),
+        "file_size": 0,
+        "width": None,
+        "height": None,
+        "dpi": None,
+        "date_taken": None,
+        "skip_reason": None,
+        "bytes_copied": 0,
+        "duplicate_of": None,
+        "similarity": None,
+        "hash": None,
+    }
+
+    try:
+        result["file_size"] = os.path.getsize(src_path)
+    except OSError as exc:
+        result["status"] = "error"
+        result["skip_reason"] = str(exc)
+        return result
+
+    # Image dimensions and DPI
+    try:
+        from PIL import Image as _Img
+        with _Img.open(src_path) as im:
+            result["width"], result["height"] = im.size
+            info = im.info or {}
+            dpi_val = info.get("dpi")
+            if dpi_val and isinstance(dpi_val, (tuple, list)) and len(dpi_val) >= 1:
+                result["dpi"] = int(round(dpi_val[0]))
+    except Exception:
+        pass
+
+    # Date taken
+    try:
+        dt = extract_date_taken(src_path)
+        if dt:
+            result["date_taken"] = dt.isoformat()
+    except Exception:
+        pass
+
+    # File hash
+    try:
+        result["hash"] = hash_func(src_path)
+    except Exception:
+        pass
+
+    # Duplicate detection against destination index
+    if dedup_index and result["hash"]:
+        try:
+            rec = dedup_index.build_record(
+                src_path,
+                width=result["width"],
+                height=result["height"],
+                date_taken=datetime.fromisoformat(result["date_taken"]) if result["date_taken"] else None,
+            )
+            score, matched = dedup_index.find_best_match(rec)
+            _log_thr = getattr(dedup_index, 'log_threshold', 70.0)
+            if matched and score >= _log_thr:
+                result["similarity"] = float(score)
+                result["duplicate_of"] = (
+                    matched.get("final_path")
+                    or matched.get("proposed_dest_path")
+                    or matched.get("src_path")
+                )
+        except Exception:
+            pass
+
+    return result
+
 
 def json_mode():
     """Run the organizer in JSON-line mode (called by the Node.js backend).
@@ -667,16 +759,21 @@ def json_mode():
     elif sequential:
         emit({"event": "progress", "message": "Sequential processing mode (optimised for HDDs)"})
 
+    # ── Read mode ───────────────────────────────────────────────────
+    scan_only = cfg.get("mode") == "scan"
+
     # ── Validate paths ──────────────────────────────────────────────
     if not SOURCE_DIR or not os.path.isdir(SOURCE_DIR):
         emit({"event": "error", "message": f"Source directory does not exist: {SOURCE_DIR}"})
         sys.exit(1)
 
-    try:
-        os.makedirs(DEST_DIR, exist_ok=True)
-    except Exception as e:
-        emit({"event": "error", "message": f"Cannot create destination: {DEST_DIR} ({e})"})
-        sys.exit(1)
+    # In scan mode the destination doesn't need to exist — we only read from it
+    if not scan_only:
+        try:
+            os.makedirs(DEST_DIR, exist_ok=True)
+        except Exception as e:
+            emit({"event": "error", "message": f"Cannot create destination: {DEST_DIR} ({e})"})
+            sys.exit(1)
 
     # ── Dedup index (thread-safe thanks to internal locking) ────────
     # Use the same hash_bytes for both the dedup index and file_hash_fast
@@ -718,7 +815,7 @@ def json_mode():
 
     # Shared mutable counters — only mutated from ``_handle_result`` which
     # is called from within the _emit_lock in threaded mode, or sequentially.
-    counters = {"processed": 0, "copied": 0, "skipped": 0, "errors": 0, "total_bytes": 0}
+    counters = {"processed": 0, "copied": 0, "skipped": 0, "errors": 0, "scanned": 0, "total_bytes": 0}
 
     def _handle_result(r):
         """Emit JSON events for a single processed file and update counters.
@@ -731,6 +828,8 @@ def json_mode():
             if r["status"] == "copied":
                 counters["copied"] += 1
                 counters["total_bytes"] += r["bytes_copied"]
+            elif r["status"] == "scanned":
+                counters["scanned"] += 1
             elif r["status"] == "skipped":
                 counters["skipped"] += 1
             else:
@@ -751,8 +850,8 @@ def json_mode():
                 "hash": r["hash"],
             })
 
-            # Emit duplicate event when dedup info is available
-            if r.get("similarity") is not None and r["similarity"] > 0:
+            # Emit duplicate event only when similarity meets the log threshold
+            if r.get("similarity") is not None and r["similarity"] >= DEDUP_LOG_THRESHOLD:
                 emit({
                     "event": "duplicate",
                     "src_path": r["src_path"],
@@ -769,53 +868,79 @@ def json_mode():
                 "total_files": total_files,
             })
 
-    # Create a copy semaphore to limit concurrent I/O operations
-    _copy_semaphore = _threading.Semaphore(concurrent_copies) if use_threading else None
-
-    # Common args for process_single_file
-    _common = dict(
-        dest_dir=DEST_DIR,
-        min_width=MIN_WIDTH,
-        min_height=MIN_HEIGHT,
-        min_filesize=MIN_FILESIZE,
-        supported_extensions=SUPPORTED_EXTENSIONS,
-        system_folders=SYSTEM_FOLDERS,
-        hash_func=hash_func,
-        dedup_index=dedup_index,
-        copy_semaphore=_copy_semaphore,
-    )
-
     # ── Phase 2: process files ──────────────────────────────────────
-    if use_threading and total_files > 0:
-        import concurrent.futures as _cf
+    if scan_only:
+        # Scan mode: extract metadata only — no copies, no semaphore needed
+        if use_threading and total_files > 0:
+            import concurrent.futures as _cf
 
-        # Split into batches
-        batches = [all_files[i:i + batch_size] for i in range(0, total_files, batch_size)]
+            batches = [all_files[i:i + batch_size] for i in range(0, total_files, batch_size)]
 
-        def _process_batch(batch):
-            """Process a batch and return list of result dicts."""
-            results = []
-            for fp in batch:
-                results.append(process_single_file(fp, **_common))
+            def _scan_batch(batch):
+                return [scan_single_file(fp, hash_func, dedup_index) for fp in batch]
+
+            with _cf.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [pool.submit(_scan_batch, b) for b in batches]
+                for future in _cf.as_completed(futures):
+                    try:
+                        for r in future.result():
+                            _handle_result(r)
+                    except Exception as exc:
+                        emit({"event": "error", "message": f"Batch error: {exc}"})
+        else:
+            for fp in all_files:
+                r = scan_single_file(fp, hash_func, dedup_index)
+                _handle_result(r)
                 if demo_delay:
                     time.sleep(demo_delay)
-            return results
-
-        with _cf.ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = [pool.submit(_process_batch, b) for b in batches]
-            for future in _cf.as_completed(futures):
-                try:
-                    for r in future.result():
-                        _handle_result(r)
-                except Exception as exc:
-                    emit({"event": "error", "message": f"Batch error: {exc}"})
     else:
-        # Sequential — same logic, no threading overhead
-        for fp in all_files:
-            r = process_single_file(fp, **_common)
-            _handle_result(r)
-            if demo_delay:
-                time.sleep(demo_delay)
+        # Normal / resume mode: scan + copy
+        # Create a copy semaphore to limit concurrent I/O operations
+        _copy_semaphore = _threading.Semaphore(concurrent_copies) if use_threading else None
+
+        # Common args for process_single_file
+        _common = dict(
+            dest_dir=DEST_DIR,
+            min_width=MIN_WIDTH,
+            min_height=MIN_HEIGHT,
+            min_filesize=MIN_FILESIZE,
+            supported_extensions=SUPPORTED_EXTENSIONS,
+            system_folders=SYSTEM_FOLDERS,
+            hash_func=hash_func,
+            dedup_index=dedup_index,
+            copy_semaphore=_copy_semaphore,
+        )
+
+        if use_threading and total_files > 0:
+            import concurrent.futures as _cf
+
+            # Split into batches
+            batches = [all_files[i:i + batch_size] for i in range(0, total_files, batch_size)]
+
+            def _process_batch(batch):
+                """Process a batch and return list of result dicts."""
+                results = []
+                for fp in batch:
+                    results.append(process_single_file(fp, **_common))
+                    if demo_delay:
+                        time.sleep(demo_delay)
+                return results
+
+            with _cf.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [pool.submit(_process_batch, b) for b in batches]
+                for future in _cf.as_completed(futures):
+                    try:
+                        for r in future.result():
+                            _handle_result(r)
+                    except Exception as exc:
+                        emit({"event": "error", "message": f"Batch error: {exc}"})
+        else:
+            # Sequential — same logic, no threading overhead
+            for fp in all_files:
+                r = process_single_file(fp, **_common)
+                _handle_result(r)
+                if demo_delay:
+                    time.sleep(demo_delay)
 
     # ── Done ────────────────────────────────────────────────────────
     emit({
@@ -825,6 +950,7 @@ def json_mode():
             "processed": counters["processed"],
             "copied": counters["copied"],
             "skipped": counters["skipped"],
+            "scanned": counters["scanned"],
             "errors": counters["errors"],
             "total_bytes": counters["total_bytes"],
         },

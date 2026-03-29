@@ -37,7 +37,7 @@ function initDb(dbPath) {
       source_dir    TEXT NOT NULL,
       dest_dir      TEXT NOT NULL,
       status        TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | error | cancelled
-      mode          TEXT NOT NULL DEFAULT 'normal',   -- normal | manual | resume
+      mode          TEXT NOT NULL DEFAULT 'normal',   -- normal | scan | manual | resume
       min_width     INTEGER NOT NULL DEFAULT 600,
       min_height    INTEGER NOT NULL DEFAULT 600,
       min_filesize  INTEGER NOT NULL DEFAULT 51200,
