@@ -79,6 +79,8 @@ router.get('/active', (req, res) => {
       errors: job.errors,
       currentFile: fileInfo?.currentFile || null,
       currentFileStatus: fileInfo?.status || null,
+      phase: fileInfo?.phase || null,
+      discovered: fileInfo?.discovered || 0,
     };
   }).filter(Boolean);
   res.json(jobs);

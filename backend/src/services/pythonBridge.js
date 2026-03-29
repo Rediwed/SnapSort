@@ -201,6 +201,22 @@ function cancelJob(jobId, db) {
  */
 function handleEvent(db, jobId, evt) {
   switch (evt.event) {
+    case 'scanning': {
+      const phase = evt.phase || 'scanning';
+      const discovered = evt.discovered || 0;
+      const message = evt.message || null;
+      if (message) console.log(`[job ${jobId}] Scanning: ${message}`);
+      else console.log(`[job ${jobId}] Scanning: discovered ${discovered} photos`);
+      currentFiles.set(jobId, {
+        currentFile: message || `Discovered ${discovered} photos...`,
+        status: 'scanning',
+        phase,
+        discovered,
+        timestamp: Date.now(),
+      });
+      break;
+    }
+
     case 'progress': {
       const total = evt.total_files || 0;
       const pct = total > 0 ? Math.round((evt.processed / total) * 100) : '?';

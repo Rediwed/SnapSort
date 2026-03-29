@@ -83,3 +83,31 @@ dist/
 # Docker / container
 docker-compose.override.yml
 push.sh
+
+# ── Security: environment & secrets ────────────────────
+.env
+.env.*
+
+# Private keys & certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.cer
+
+# SSH keys
+id_rsa
+id_ed25519
+
+# Shell & tool credentials
+.netrc
+.npmrc
+
+# Backup & temp files
+*.bak
+*.swp
+*.tmp
+desktop.ini

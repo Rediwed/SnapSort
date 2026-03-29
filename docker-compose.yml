@@ -11,9 +11,10 @@ services:
       - db-data:/app/backend/data         # persist SQLite database
       - /mnt/user/photos:/mnt/photos      # adjust to your photo share
       # Optional: mount external/unallocated disks (Unraid Unassigned Devices plugin)
-      # - /mnt/disks:/mnt/disks
+      # Uses :rslave so drives mounted on the host after start are visible.
+      # - /mnt/disks:/mnt/disks:rslave
       # Optional: mount all user shares (read-only)
-      # - /mnt/user:/mnt/user:ro
+      # - /mnt/user:/mnt/user:ro,rslave
     environment:
       - NODE_ENV=production
       - PORT=4000

@@ -19,7 +19,7 @@
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL/>
   <Icon>https://raw.githubusercontent.com/Rediwed/SnapSort/main/frontend/public/icon.png</Icon>
-  <ExtraParams/>
+  <ExtraParams>--mount type=bind,source=/mnt/disks,target=/mnt/disks,bind-propagation=rslave --mount type=bind,source=/mnt/remotes,target=/mnt/remotes,bind-propagation=rslave</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
@@ -51,13 +51,15 @@
     Required="true"
     Mask="false">/mnt/user/photos</Config>
 
-  <!-- External / unallocated disks (requires Unassigned Devices plugin) -->
+  <!-- External / unallocated disks (requires Unassigned Devices plugin)
+       Mount propagation is handled via ExtraParams above for rslave support.
+       This path mapping remains as a fallback / documentation reference. -->
   <Config
     Name="External/Unallocated Disks"
     Target="/mnt/disks"
     Default="/mnt/disks"
-    Mode="rw"
-    Description="Mount unassigned/external drives so SnapSort can read from USB, SATA, or NVMe drives not in the array"
+    Mode="rw,rslave"
+    Description="Mount unassigned/external drives so SnapSort can read from USB, SATA, or NVMe drives not in the array. Uses rslave propagation so hot-plugged drives appear automatically."
     Type="Path"
     Display="always"
     Required="false"

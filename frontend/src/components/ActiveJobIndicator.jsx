@@ -88,15 +88,41 @@ export default function ActiveJobIndicator({ compact = false }) {
   const total = activeJob.total_files || 0;
   const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
   const sourceLabel = activeJob.source_dir?.split('/').pop() || 'Job';
+  const isScanning = activeJob.phase === 'scanning' || activeJob.phase === 'seeding' || (activeJob.currentFileStatus === 'scanning');
+  const discovered = activeJob.discovered || 0;
 
   if (compact) {
-    /* Mobile: minimal inline bar */
     return (
       <div className="active-job-compact">
         <div className="active-job-compact-bar">
-          <div className="active-job-compact-fill" style={{ width: `${pct}%` }} />
+          <div className="active-job-compact-fill" style={isScanning ? { width: '100%', animation: 'aji-pulse-bar 1.5s ease-in-out infinite' } : { width: `${pct}%` }} />
         </div>
-        <span className="active-job-compact-label">{pct}%</span>
+        <span className="active-job-compact-label">{isScanning ? 'Scanning' : `${pct}%`}</span>
+      </div>
+    );
+  }
+
+  /* Scanning / seeding phase — indeterminate progress */
+  if (isScanning) {
+    return (
+      <div className="active-job-indicator">
+        <div className="aji-header">
+          <span className="aji-pulse" />
+          <span className="aji-title">{activeJob.phase === 'seeding' ? 'Indexing' : 'Scanning'}</span>
+          {discovered > 0 && <span className="aji-pct">{discovered.toLocaleString()} 📷</span>}
+        </div>
+        <div className="aji-progress-track">
+          <div className="aji-progress-fill aji-progress-indeterminate" />
+        </div>
+        <div className="aji-stats">
+          <span>{activeJob.phase === 'seeding' ? 'Indexing destination...' : `${discovered.toLocaleString()} photos discovered`}</span>
+          <span className="aji-source" title={activeJob.source_dir}>{sourceLabel}</span>
+        </div>
+        {fadeFile && (
+          <div className="aji-file" key={fadeFile}>
+            {fadeFile}
+          </div>
+        )}
       </div>
     );
   }

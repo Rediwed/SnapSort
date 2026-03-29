@@ -90,12 +90,16 @@ router.get('/roots', (_req, res) => {
   const mounts = [
     '/mnt', '/media', '/Volumes',           // Linux & macOS
     '/mnt/photos/source', '/mnt/photos/dest', // Docker volumes
+    '/mnt/disks',                             // Unraid: unassigned devices
+    '/mnt/user',                              // Unraid: user shares
   ];
 
   for (const mp of mounts) {
     try {
       if (fs.existsSync(mp) && fs.statSync(mp).isDirectory()) {
         const label = mp.startsWith('/Volumes') ? 'Volumes' :
+                      mp === '/mnt/disks'        ? 'Disks'   :
+                      mp === '/mnt/user'         ? 'Shares'  :
                       mp.startsWith('/media')  ? 'Media'   :
                       mp.startsWith('/mnt/photos') ? mp.split('/').pop() : 'Mount';
         roots.push({ name: label, path: mp, icon: '💾' });

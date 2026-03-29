@@ -415,16 +415,20 @@ def file_hash_fast(filepath, max_bytes=8192):
 # ── Shared processing helpers (used by json_mode, parallel_organizer, CLI) ──
 
 
-def optimized_directory_scan(source_dir, supported_extensions):
+def optimized_directory_scan(source_dir, supported_extensions, progress_callback=None):
     """Fast directory scan that prunes system dirs from os.walk in-place.
 
     Returns a flat list of absolute file paths whose extension matches
     *supported_extensions*.  Directories listed in ``SYSTEM_FOLDERS`` are
     never entered — the check modifies *dirs* in-place so ``os.walk``
     does not recurse into them.
+
+    If *progress_callback* is provided it is called periodically with the
+    current count of discovered files so the caller can emit live updates.
     """
     files = []
     supported_lower = tuple(ext.lower() for ext in supported_extensions)
+    _last_report = 0
 
     for root, dirs, filenames in os.walk(source_dir):
         # Prune child dirs so os.walk will not descend into them.
@@ -436,6 +440,13 @@ def optimized_directory_scan(source_dir, supported_extensions):
         for fname in filenames:
             if fname.lower().endswith(supported_lower):
                 files.append(os.path.join(root, fname))
+        # Report progress every 50 discovered files
+        if progress_callback and len(files) - _last_report >= 50:
+            _last_report = len(files)
+            progress_callback(len(files))
+    # Final report
+    if progress_callback and len(files) != _last_report:
+        progress_callback(len(files))
     return files
 
 
@@ -791,6 +802,7 @@ def json_mode():
     )
 
     # Use parallel hashing for seeding when multi-threading is enabled
+    emit({"event": "scanning", "phase": "seeding", "message": "Indexing destination for deduplication..."})
     seed_workers = parallel_hash_workers if use_threading and not sequential else 1
     seeded = dedup_index.seed_from_directory(
         DEST_DIR, SUPPORTED_EXTENSIONS, _noop_log,
@@ -800,7 +812,12 @@ def json_mode():
         emit({"event": "progress", "message": f"Seeded dedup index with {seeded} existing files (workers={seed_workers})"})
 
     # ── Phase 1: fast directory scan (prunes system dirs) ───────────
-    all_files = optimized_directory_scan(SOURCE_DIR, SUPPORTED_EXTENSIONS)
+    emit({"event": "scanning", "phase": "scanning", "discovered": 0, "message": "Scanning source directory..."})
+
+    def _scan_progress(count):
+        emit({"event": "scanning", "phase": "scanning", "discovered": count})
+
+    all_files = optimized_directory_scan(SOURCE_DIR, SUPPORTED_EXTENSIONS, progress_callback=_scan_progress)
     total_files = len(all_files)
 
     emit({"event": "progress", "processed": 0, "copied": 0, "skipped": 0,

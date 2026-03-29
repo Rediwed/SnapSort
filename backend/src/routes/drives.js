@@ -172,12 +172,48 @@ function detectLinuxDrives() {
     } catch { /* no /proc/mounts */ }
   }
 
-  /* Also include Docker-mounted /mnt paths */
-  const dockerMounts = ['/mnt/photos/source', '/mnt/photos/dest', '/mnt'];
-  for (const mp of dockerMounts) {
+  /* ── Auto-discover Docker bind-mounted drives & shares ──────────
+   * Inside Docker, lsblk/proc/mounts won't see host drives.
+   * Instead, enumerate subdirectories of well-known Unraid mount
+   * roots so every drive/share appears individually in the UI.
+   *
+   *  /mnt/disks   — Unassigned Devices plugin (USB, SATA, NVMe)
+   *  /mnt/remotes — Remote SMB/NFS mounts (Unassigned Devices)
+   *  /mnt/user    — Unraid user shares
+   */
+  const mountRoots = [
+    { root: '/mnt/disks',   type: 'unassigned-disk', protocol: 'bind-mount' },
+    { root: '/mnt/remotes', type: 'remote-share',    protocol: 'bind-mount' },
+    { root: '/mnt/user',    type: 'user-share',      protocol: 'bind-mount' },
+  ];
+
+  for (const { root, type, protocol } of mountRoots) {
     try {
-      if (fs.existsSync(mp) && fs.statSync(mp).isDirectory()) {
-        if (!drives.some((d) => d.path === mp)) {
+      if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) continue;
+      const entries = fs.readdirSync(root, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+        const fullPath = `${root}/${entry.name}`;
+        if (drives.some((d) => d.path === fullPath)) continue;
+        drives.push({
+          name: entry.name,
+          path: fullPath,
+          type,
+          protocol,
+          size: null,
+          removable: type === 'unassigned-disk',
+          filesystem: 'unknown',
+        });
+      }
+    } catch { /* root not mounted — skip */ }
+  }
+
+  /* Fallback: include /mnt itself if nothing else was found */
+  if (drives.length === 0) {
+    const fallbacks = ['/mnt/photos/source', '/mnt/photos/dest', '/mnt'];
+    for (const mp of fallbacks) {
+      try {
+        if (fs.existsSync(mp) && fs.statSync(mp).isDirectory()) {
           drives.push({
             name: mp.split('/').pop(),
             path: mp,
@@ -188,8 +224,8 @@ function detectLinuxDrives() {
             filesystem: 'ext4',
           });
         }
-      }
-    } catch { /* skip */ }
+      } catch { /* skip */ }
+    }
   }
 
   return drives;
