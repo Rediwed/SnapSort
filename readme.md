@@ -49,6 +49,13 @@ SnapSort includes a multi-strategy deduplication system:
   <img src="docs/screenshots/snapsort-duplicates.png" width="680" alt="SnapSort Duplicates">
 </p>
 
+### 🔔 Notifications
+Stay informed about your jobs and drives with push notifications:
+- **ntfy.sh**: Send notifications to your phone or desktop via any ntfy-compatible app — supports default `ntfy.sh` or self-hosted servers, with optional token or basic authentication
+- **Browser notifications**: Native browser push notifications via the Notification API, powered by SSE from the backend
+- **Configurable events**: Choose which events trigger notifications — job start, completion, errors, progress updates (on a configurable interval), drive attach, and drive lost
+- **Drive monitoring**: Automatic polling detects when drives are attached, safely ejected, or unexpectedly lost, and fires corresponding notifications
+
 ### ⏳ Progress Tracking
 Real-time feedback during operation:
 - **CLI**: Animated spinner during initialization (destination indexing and source scanning), inline progress with files processed, copied, skipped, errors, and ETA, plus a comprehensive log file recording every action
@@ -57,17 +64,19 @@ Real-time feedback during operation:
 ### 🌐 Web GUI
 A full-stack web interface for managing photo organization visually:
 
-- **Dashboard** — overview stats across all jobs
-- **Jobs** — create, start, monitor, and delete organization runs with live progress bars; choose a performance profile per job with a settings summary preview
+- **Dashboard** — overview stats across all jobs with configurable date formatting
+- **Jobs** — create, start, monitor, and delete organization runs with live progress bars; name your jobs for easy identification; choose a performance profile per job with a settings summary preview
 
 <p align="center">
   <img src="docs/screenshots/snapsort-jobs.png" width="680" alt="SnapSort Jobs">
 </p>
-- **Photos** — browse all processed photos with status filtering (copied/skipped/error/duplicate), skip reasons, dimensions, date taken, hover image previews, and an integrated **Duplicates** tab for reviewing flagged duplicate pairs with side-by-side comparison, metadata diffs, and per-duplicate resolution actions
+- **Photos** — browse all processed photos with status filtering (copied/skipped/error/duplicate), regex search, skip reasons, dimensions, date taken, hover image previews, a **photo detail modal** with full EXIF metadata viewer, and an integrated **Duplicates** tab for reviewing flagged duplicate pairs with side-by-side comparison, metadata diffs, and per-duplicate resolution actions
 - **Benchmarks** — test real storage I/O on your source & destination folders, identify the bottleneck, and get a recommended performance profile (see below)
-- **Settings** — configure filter, quality, performance, and format defaults with responsive grid layout
+- **Settings** — tabbed layout (General, Filters & Formats, Performance, Notifications) with inline performance profile editing, creation, and deletion; ntfy.sh and browser notification configuration; configurable date/time display formats and theme selection
+- **Diagnostics** — system info, Python/Node.js versions, mounted drives, CPU & memory usage with sparkline charts, and a live SSE log stream with regex filtering (togglable from Settings)
 - **File Picker** — server-side directory browser with external drive detection
 - **Test Data** — one-click test dataset loading for development and validation
+- **Theming** — full dark and light theme support with system-preference detection; switch themes from Settings
 - **Responsive** — fully responsive layout with a mobile top-down drawer navigation; all pages adapt from desktop to phone
 
 ### 📊 Storage Benchmarks & Profile Suggestions
@@ -98,7 +107,7 @@ SnapSort ships with 7 built-in performance profiles tuned for different storage 
 | USB External | 2 | 15 | 2048 | 1 | Single | Sequential |
 | Default | 4 | 25 | 4096 | 2 | Multi | Parallel |
 
-Profiles can be applied globally from Settings, per-job during job creation, or automatically from benchmark results. You can also adjust individual performance parameters to create your own configuration.
+Profiles can be applied globally from Settings, per-job during job creation, or automatically from benchmark results. Custom profiles can be created, edited, and deleted directly from the Settings page.
 
 > **Note:** Performance profiles, storage benchmarks, and drive detection are Web GUI features. The CLI uses direct configuration constants. Adding `--profile` and `--benchmark` CLI flags is on the roadmap.
 
@@ -134,16 +143,19 @@ SnapSort/
 ├── VERSION                    # Single source of truth for version (read by Python, Node.js, and frontend)
 ├── backend/                   # Node.js Express API
 │   └── src/
-│       ├── index.js           # Express server (serves API + SPA)
+│       ├── index.js           # Express server (serves API + SPA, SSE log stream)
 │       ├── sourceGuard.js     # Read-only enforcement for source paths
 │       ├── db/                # SQLite schema + DAO (incl. performance_profiles table)
-│       ├── routes/            # REST endpoints (jobs, photos, duplicates, benchmarks, profiles, etc.)
-│       └── services/          # Python bridge (spawns organizer, streams events)
+│       ├── routes/            # REST endpoints (jobs, photos, duplicates, benchmarks, profiles, settings, etc.)
+│       └── services/          # Python bridge, ntfy.sh service, browser notify service, CPU monitor, drive monitor, log buffer
 ├── frontend/                  # React 18 + Vite SPA
 │   └── src/
-│       ├── pages/             # Dashboard, Jobs, Photos (incl. Duplicates tab), Benchmarks, Settings
-│       ├── components/        # Modal, DataTable, FilePicker, Badge, StatCard, Sidebar, etc.
-│       └── index.css          # Custom CSS dark theme
+│       ├── pages/             # Dashboard, Jobs, Photos (incl. Duplicates tab), Benchmarks, Settings, Diagnostics
+│       ├── components/        # Modal, DataTable, FilePicker, Badge, StatCard, SparklineCard, PhotoDetailModal, Sidebar, etc.
+│       ├── hooks/             # useNotifications (browser push via SSE)
+│       ├── SettingsContext.jsx # Global theme, date/time format provider
+│       ├── dateFormat.js      # Shared date/time formatting utilities
+│       └── index.css          # Custom CSS with dark & light themes
 ├── scripts/                   # Dev utilities (DB seeding, cleanup)
 ├── Dockerfile                 # Unified multi-stage build
 ├── docker-compose.yml         # Single-service deployment
@@ -153,8 +165,8 @@ SnapSort/
 ```
 
 **Tech Stack:**
-- **Backend**: Node.js, Express 4, better-sqlite3 (WAL mode), uuid, cors
-- **Frontend**: React 18, Vite 6, React Router 6, custom CSS dark theme
+- **Backend**: Node.js, Express 4, better-sqlite3 (WAL mode), uuid, cors, exifr
+- **Frontend**: React 18, Vite 6, React Router 6, Lucide React icons, custom CSS with dark & light themes
 - **Engine**: Python 3.9+, Pillow, piexif
 - **Deployment**: Docker (Alpine-based), Unraid XML template
 
@@ -372,11 +384,10 @@ You can run multiple instances of SnapSort simultaneously to process different f
 - **CLI `--profile` flag:** Apply named performance profiles from the command line
 - **CLI `--benchmark` flag:** Run storage I/O benchmarks directly from the terminal
 - **Post-run duplicate review in CLI:** Interactive review of flagged duplicates after processing
-- **Custom performance profiles UI:** Create and manage custom profiles from the Settings page
 - **Configurable system folder filtering:** Editable blocklist for system/application folders in both CLI and GUI
 - **Improved folder-name awareness:** Retain event/memory grouping when photos span nested folders
 - **Project management:** Support multi-drive projects with cross-drive analysis, manual evaluation, and unified reporting
-- **Automatic drive handling:** Notifications when drives finish, safe ejection, and auto-start on new drive connection
+- **Auto-start on drive connection:** Automatically trigger jobs when a configured drive is attached
 - **Analyze-only mode:** Build CSV without copying files for manual review
 - **Customizable storage template:** User-defined destination folder structure using template variables (inspired by [Immich](https://immich.app/)), e.g. `{{y}}/{{y}}-{{MM}}/{{filename}}.{{ext}}`. Support variables for date/time (`{{y}}`, `{{MM}}`, `{{dd}}`), camera metadata (`{{make}}`, `{{model}}`), and file info (`{{filename}}`, `{{ext}}`, `{{filetype}}`)\n- **Dedicated Duplicates page:** Evaluate whether duplicate management warrants its own top-level page given its critical nature
 
