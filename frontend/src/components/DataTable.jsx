@@ -5,7 +5,7 @@ import { Inbox } from 'lucide-react';
  *
  * columns = [{ key, header, render?, className? }]
  */
-export default function DataTable({ columns, rows, emptyMessage = 'No data' }) {
+export default function DataTable({ columns, rows, emptyMessage = 'No data', onRowClick }) {
   if (!rows || rows.length === 0) {
     return (
       <div className="empty-state">
@@ -27,7 +27,7 @@ export default function DataTable({ columns, rows, emptyMessage = 'No data' }) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={row.id || i}>
+            <tr key={row.id || i} onClick={onRowClick ? () => onRowClick(row) : undefined} style={onRowClick ? { cursor: 'pointer' } : undefined}>
               {columns.map((col) => (
                 <td key={col.key} className={col.className || ''}>
                   {col.render ? col.render(row) : row[col.key]}

@@ -4,6 +4,8 @@
 
 const { Router } = require('express');
 const { getAllSettings, upsertSetting, bulkUpsertSettings } = require('../db/dao');
+const { sendTestNotification } = require('../services/ntfyService');
+const { subscribe, unsubscribe, sendTestBrowserNotification } = require('../services/browserNotifyService');
 
 const router = Router();
 
@@ -28,6 +30,41 @@ router.patch('/', (req, res) => {
   }
   bulkUpsertSettings(req.db, pairs);
   res.json(getAllSettings(req.db));
+});
+
+/* Send a test ntfy notification */
+router.post('/ntfy-test', async (req, res) => {
+  try {
+    await sendTestNotification(req.db);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message });
+  }
+});
+
+/* Send a test browser notification to all connected tabs */
+router.post('/browser-notify-test', (_req, res) => {
+  sendTestBrowserNotification();
+  res.json({ ok: true });
+});
+
+/* SSE stream for browser notifications */
+router.get('/notifications/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('\n');
+
+  const subId = subscribe((event) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  });
+
+  req.on('close', () => {
+    unsubscribe(subId);
+  });
 });
 
 module.exports = router;

@@ -6,6 +6,7 @@ import Jobs from './pages/Jobs';
 import Photos from './pages/Photos';
 import Settings from './pages/Settings';
 import Benchmarks from './pages/Benchmarks';
+import Diagnostics from './pages/Diagnostics';
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="photos" element={<Photos />} />
         <Route path="benchmarks" element={<Benchmarks />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="diagnostics" element={<Diagnostics />} />
       </Route>
     </Routes>
   );

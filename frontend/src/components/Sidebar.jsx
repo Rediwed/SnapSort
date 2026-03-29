@@ -1,31 +1,41 @@
 import { NavLink } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { fetchHealth } from '../api';
+import { LayoutDashboard, HardDrive, Play, Image, Timer, Settings, Stethoscope } from 'lucide-react';
+import { fetchHealth, fetchSettings } from '../api';
 import ActiveJobIndicator from './ActiveJobIndicator';
 
-const links = [
-  { to: '/dashboard',  icon: '◉', label: 'Dashboard' },
-  { to: '/drives',     icon: '💾', label: 'Drives' },
-  { to: '/jobs',       icon: '▶', label: 'Jobs' },
-  { to: '/photos',     icon: '▣', label: 'Photos' },
-  { to: '/benchmarks', icon: '⏱', label: 'Benchmarks' },
-  { to: '/settings',   icon: '⚙', label: 'Settings' },
+const baseLinks = [
+  { to: '/dashboard',  icon: <LayoutDashboard size={16} />, label: 'Dashboard' },
+  { to: '/drives',     icon: <HardDrive size={16} />, label: 'Drives' },
+  { to: '/jobs',       icon: <Play size={16} />, label: 'Jobs' },
+  { to: '/photos',     icon: <Image size={16} />, label: 'Photos' },
+  { to: '/benchmarks', icon: <Timer size={16} />, label: 'Benchmarks' },
+  { to: '/settings',   icon: <Settings size={16} />, label: 'Settings' },
 ];
+
+const diagLink = { to: '/diagnostics', icon: <Stethoscope size={16} />, label: 'Diagnostics' };
 
 export default function Sidebar({ open, onClose }) {
   const [version, setVersion] = useState(null);
+  const [diagEnabled, setDiagEnabled] = useState(false);
+
   useEffect(() => {
     fetchHealth()
       .then((data) => setVersion(data.version))
       .catch(() => {});
+    fetchSettings()
+      .then((s) => setDiagEnabled(s.diagnostics_enabled === 'true'))
+      .catch(() => {});
   }, []);
+
+  const links = diagEnabled ? [...baseLinks, diagLink] : baseLinks;
 
   return (
     <>
       {/* Desktop sidebar — always visible on wide screens */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div className="logo-icon">S</div>
+          <img className="logo-icon" src="/favicon.svg" alt="SnapSort" />
           <h1>SnapSort</h1>
           <span className="version">{version ? `v${version}` : ''}</span>
         </div>
@@ -51,7 +61,7 @@ export default function Sidebar({ open, onClose }) {
       <div className={`mobile-drawer${open ? ' mobile-drawer-open' : ''}`}>
         <div className="mobile-drawer-header">
           <div className="sidebar-logo">
-            <div className="logo-icon">S</div>
+            <img className="logo-icon" src="/favicon.svg" alt="SnapSort" />
             <h1>SnapSort</h1>
           </div>
           <ActiveJobIndicator compact />

@@ -11,12 +11,12 @@ const { v4: uuidv4 } = require('uuid');
 /*  JOBS                                                               */
 /* ================================================================== */
 
-function createJob(db, { sourceDir, destDir, mode = 'normal', minWidth = 600, minHeight = 600, minFilesize = 51200, performanceProfile = null }) {
+function createJob(db, { name, sourceDir, destDir, mode = 'normal', minWidth = 600, minHeight = 600, minFilesize = 51200, performanceProfile = null }) {
   const id = uuidv4();
   db.prepare(`
-    INSERT INTO jobs (id, source_dir, dest_dir, mode, min_width, min_height, min_filesize, performance_profile)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile);
+    INSERT INTO jobs (id, name, source_dir, dest_dir, mode, min_width, min_height, min_filesize, performance_profile)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, name || null, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile);
   return getJob(db, id);
 }
 
@@ -83,7 +83,7 @@ function insertPhoto(db, photo) {
   return id;
 }
 
-function listPhotos(db, { jobId, status, isDuplicate, resolution, limit = 100, offset = 0 } = {}) {
+function listPhotos(db, { jobId, status, isDuplicate, resolution, search, limit = 100, offset = 0 } = {}) {
   let sql = `SELECT p.*,
       d.id AS dup_id, d.similarity, d.matched_path AS dup_matched_path,
       d.matched_photo_id, d.resolution AS dup_resolution, d.src_path AS dup_src_path,
@@ -101,6 +101,7 @@ function listPhotos(db, { jobId, status, isDuplicate, resolution, limit = 100, o
     WHERE 1=1`;
   const params = [];
   if (jobId) { sql += ' AND p.job_id = ?'; params.push(jobId); }
+  if (search) { sql += ' AND (p.filename REGEXP ? OR p.src_path REGEXP ?)'; params.push(search, search); }
   if (isDuplicate === 'true') {
     sql += ' AND d.id IS NOT NULL';
     if (resolution) { sql += ' AND COALESCE(d.resolution, \'undecided\') = ?'; params.push(resolution); }
@@ -115,12 +116,13 @@ function listPhotos(db, { jobId, status, isDuplicate, resolution, limit = 100, o
   return db.prepare(sql).all(...params);
 }
 
-function countPhotos(db, { jobId, status, isDuplicate, resolution } = {}) {
+function countPhotos(db, { jobId, status, isDuplicate, resolution, search } = {}) {
   let sql = `SELECT COUNT(*) AS count FROM photos p
     LEFT JOIN duplicates d ON d.photo_id = p.id
     WHERE 1=1`;
   const params = [];
   if (jobId) { sql += ' AND p.job_id = ?'; params.push(jobId); }
+  if (search) { sql += ' AND (p.filename REGEXP ? OR p.src_path REGEXP ?)'; params.push(search, search); }
   if (isDuplicate === 'true') {
     sql += ' AND d.id IS NOT NULL';
     if (resolution) { sql += ' AND COALESCE(d.resolution, \'undecided\') = ?'; params.push(resolution); }

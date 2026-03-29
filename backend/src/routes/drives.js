@@ -9,6 +9,7 @@ const { Router } = require('express');
 const { execSync } = require('child_process');
 const os = require('os');
 const fs = require('fs');
+const { notifyDriveScanStarted, notifyDriveScanCompleted } = require('../services/ntfyService');
 
 const router = Router();
 
@@ -251,7 +252,10 @@ router.post('/prescan', (req, res) => {
   activePrescanMap.set(scanPath, state);
 
   /* Run the walk async via setImmediate batching */
-  prescanAsync(scanPath, state);
+  prescanAsync(scanPath, state, req.db);
+
+  /* Send ntfy notification for scan start */
+  notifyDriveScanStarted(req.db, scanPath);
 
   res.json({ status: 'started', path: scanPath });
 });
@@ -310,7 +314,7 @@ const fsp = fs.promises;
  * Walk directory tree using async fs operations so the event loop
  * is never blocked and other API requests can be served concurrently.
  */
-async function prescanAsync(rootPath, state) {
+async function prescanAsync(rootPath, state, db) {
   /* Collect top-level folders first */
   try {
     const entries = await fsp.readdir(rootPath, { withFileTypes: true });
@@ -363,6 +367,18 @@ async function prescanAsync(rootPath, state) {
   /* Done */
   state.status = 'done';
   state.currentFile = null;
+
+  /* Send ntfy notification for scan complete */
+  if (db) {
+    notifyDriveScanCompleted(db, rootPath, {
+      imageCount: state.imageCount,
+      imageBytes: state.imageBytes,
+      otherCount: state.otherCount,
+      otherBytes: state.otherBytes,
+      truncated: state.truncated,
+    });
+  }
+
   /* Auto-clean after 5 minutes */
   setTimeout(() => activePrescanMap.delete(rootPath), 5 * 60 * 1000);
 }

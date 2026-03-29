@@ -11,6 +11,7 @@ const {
 } = require('../db/dao');
 const { startJob, cancelJob, getActiveJobIds, getCurrentFile } = require('../services/pythonBridge');
 const { assertNotInSource } = require('../sourceGuard');
+const { notifyJobCancelled } = require('../services/ntfyService');
 
 const router = Router();
 
@@ -92,7 +93,7 @@ router.get('/:id', (req, res) => {
 
 /* Create a new job */
 router.post('/', (req, res) => {
-  const { sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile } = req.body;
+  const { name, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile } = req.body;
   if (!sourceDir || !destDir) {
     return res.status(400).json({ error: 'sourceDir and destDir are required' });
   }
@@ -108,7 +109,7 @@ router.post('/', (req, res) => {
   if (resolvedSrc.startsWith(resolvedDst + path.sep)) {
     return res.status(400).json({ error: 'Source must not be inside the destination directory — this would cause SnapSort to re-process its own output.' });
   }
-  const job = createJob(req.db, { sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile });
+  const job = createJob(req.db, { name, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile });
   res.status(201).json(job);
 });
 
@@ -143,6 +144,7 @@ router.post('/:id/cancel', (req, res) => {
     error_message: 'Cancelled by user',
     finished_at: new Date().toISOString(),
   });
+  notifyJobCancelled(req.db, job);
   res.json(updated);
 });
 

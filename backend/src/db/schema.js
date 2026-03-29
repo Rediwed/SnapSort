@@ -23,10 +23,17 @@ function initDb(dbPath) {
   db.pragma('synchronous = NORMAL');
   db.pragma('foreign_keys = ON');
 
+  /* Register REGEXP function for regex search support */
+  db.function('regexp', { deterministic: true }, (pattern, value) => {
+    if (pattern == null || value == null) return 0;
+    try { return new RegExp(pattern, 'i').test(value) ? 1 : 0; } catch { return 0; }
+  });
+
   /* ---- jobs ---- */
   db.exec(`
     CREATE TABLE IF NOT EXISTS jobs (
       id            TEXT PRIMARY KEY,
+      name          TEXT,
       source_dir    TEXT NOT NULL,
       dest_dir      TEXT NOT NULL,
       status        TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | error | cancelled
@@ -53,6 +60,9 @@ function initDb(dbPath) {
     const cols = db.pragma('table_info(jobs)').map((c) => c.name);
     if (!cols.includes('performance_profile')) {
       db.exec('ALTER TABLE jobs ADD COLUMN performance_profile TEXT');
+    }
+    if (!cols.includes('name')) {
+      db.exec('ALTER TABLE jobs ADD COLUMN name TEXT');
     }
   } catch { /* table doesn't exist yet — CREATE above handled it */ }
 
@@ -184,6 +194,29 @@ function initDb(dbPath) {
       concurrent_copies: '2',
       sequential_processing: 'false',
       default_performance_profile: 'default',
+      /* ntfy.sh notification defaults */
+      ntfy_enabled: 'false',
+      ntfy_server: 'https://ntfy.sh',
+      ntfy_topic: 'snapsort',
+      ntfy_auth_type: 'none',
+      ntfy_auth_token: '',
+      ntfy_username: '',
+      ntfy_password: '',
+      ntfy_on_job_start: 'true',
+      ntfy_on_job_complete: 'true',
+      ntfy_on_job_error: 'true',
+      ntfy_on_progress: 'false',
+      ntfy_progress_interval: '60',
+      ntfy_on_drive_scan: 'false',
+      ntfy_on_drive_attach: 'true',
+      ntfy_on_drive_lost: 'true',
+      /* Browser notification defaults */
+      browser_notify_enabled: 'false',
+      diagnostics_enabled: 'false',
+      /* Display preferences */
+      date_format: 'system',
+      time_format: 'system',
+      theme: 'dark',
     };
     const tx = db.transaction(() => {
       for (const [k, v] of Object.entries(defaults)) {

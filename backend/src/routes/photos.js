@@ -11,16 +11,17 @@ const router = Router();
 
 /* List photos with optional filters */
 router.get('/', (req, res) => {
-  const { jobId, status, isDuplicate, resolution, limit, offset } = req.query;
+  const { jobId, status, isDuplicate, resolution, search, limit, offset } = req.query;
   const photos = listPhotos(req.db, {
     jobId,
     status,
     isDuplicate,
     resolution,
+    search: search || undefined,
     limit: limit ? Number(limit) : 100,
     offset: offset ? Number(offset) : 0,
   });
-  const total = countPhotos(req.db, { jobId, status, isDuplicate, resolution });
+  const total = countPhotos(req.db, { jobId, status, isDuplicate, resolution, search: search || undefined });
   res.json({ photos, total });
 });
 
@@ -50,6 +51,28 @@ router.get('/:id', (req, res) => {
   const photo = getPhoto(req.db, req.params.id);
   if (!photo) return res.status(404).json({ error: 'Photo not found' });
   res.json(photo);
+});
+
+/* Return EXIF metadata for a photo */
+router.get('/:id/exif', async (req, res) => {
+  const photo = getPhoto(req.db, req.params.id);
+  if (!photo) return res.status(404).json({ error: 'Photo not found' });
+
+  const filePath = (photo.dest_path && fs.existsSync(photo.dest_path))
+    ? photo.dest_path
+    : photo.src_path;
+
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.json({ exif: null, error: 'Image file not found on disk' });
+  }
+
+  try {
+    const exifr = require('exifr');
+    const exif = await exifr.parse(filePath, { translateKeys: true, translateValues: true, reviveValues: false });
+    res.json({ exif: exif || null });
+  } catch {
+    res.json({ exif: null });
+  }
 });
 
 /* Serve a photo's source image for preview */

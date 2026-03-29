@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import useNotifications from '../hooks/useNotifications';
 
 export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
+  useNotifications();
 
   return (
     <div className="app-layout">

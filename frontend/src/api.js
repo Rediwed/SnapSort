@@ -43,6 +43,7 @@ export const fetchPhotos = (params = {}) => {
 export const fetchPhoto = (id) => request(`/photos/${id}`);
 export const fetchPhotoJobs = () => request('/photos/jobs');
 export const photoPreviewUrl = (id) => `${BASE}/photos/${id}/preview`;
+export const fetchPhotoExif = (id) => request(`/photos/${id}/exif`);
 
 /* ---- Photo Overrides ---- */
 export const overridePhotos = (jobId, photoIds) =>
@@ -55,6 +56,8 @@ export const resolveDuplicate = (id, resolution) =>
 /* ---- Settings ---- */
 export const fetchSettings = () => request('/settings');
 export const updateSettings = (pairs) => request('/settings', { method: 'PATCH', body: JSON.stringify(pairs) });
+export const sendNtfyTest = () => request('/settings/ntfy-test', { method: 'POST' });
+export const sendBrowserNotifyTest = () => request('/settings/browser-notify-test', { method: 'POST' });
 
 /* ---- Filesystem browse ---- */
 export const browseDirectory = (dir, files = false) => {
@@ -90,3 +93,4 @@ export const startBenchmark = (body = {}) => request('/benchmarks', { method: 'P
 export const fetchHealth = () => request('/health');
 export const fetchDiagnostics = () => request('/diagnostics');
 export const fetchLogs = () => request('/logs');
+export const logStreamUrl = `${BASE}/logs/stream`;

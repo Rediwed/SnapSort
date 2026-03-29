@@ -18,6 +18,10 @@ const { spawn } = require('child_process');
 const path = require('path');
 const { updateJobStatus, insertPhoto, insertDuplicate, getAllSettings, getProfile } = require('../db/dao');
 const { v4: uuidv4 } = require('uuid');
+const {
+  notifyJobStarted, notifyJobCompleted, notifyJobError,
+  notifyJobCancelled, stopProgressTimer,
+} = require('./ntfyService');
 
 /* Map of jobId → child process so we can cancel */
 const activeProcesses = new Map();
@@ -86,6 +90,11 @@ function startJob(db, job) {
   photoIdMaps.set(job.id, new Map());
   currentFiles.set(job.id, { currentFile: null, timestamp: Date.now() });
 
+  console.log(`[job ${job.id}] Started — mode=${job.mode} source=${job.source_dir} dest=${job.dest_dir}`);
+
+  /* Send ntfy notification for job start */
+  notifyJobStarted(db, job);
+
   /* Track whether the Python process sent an error event with a descriptive message */
   let pythonErrorMessage = null;
 
@@ -105,7 +114,8 @@ function startJob(db, job) {
         const evt = JSON.parse(line);
         handleEvent(db, job.id, evt);
       } catch {
-        /* not JSON — ignore (plain log output) */
+        /* Forward non-JSON Python output to console so it appears in Docker logs */
+        console.log(`[job ${job.id}] ${line}`);
       }
     }
   });
@@ -123,6 +133,7 @@ function startJob(db, job) {
       error_message: `Failed to start Python process: ${err.message}`,
       finished_at: new Date().toISOString(),
     });
+    notifyJobError(db, job, `Failed to start Python process: ${err.message}`);
   });
 
   child.on('close', (code) => {
@@ -134,10 +145,20 @@ function startJob(db, job) {
       cancelledJobs.delete(job.id);
       return;
     }
+    /* Re-read the job for final counters */
+    let finalJob;
+    try {
+      const { getJob } = require('../db/dao');
+      finalJob = getJob(db, job.id);
+    } catch { finalJob = job; }
+
     if (code === 0) {
       /* Only mark done if the Python error handler didn't already set an error */
       if (!pythonErrorMessage) {
         updateJobStatus(db, job.id, 'done', { finished_at: new Date().toISOString() });
+        notifyJobCompleted(db, finalJob);
+      } else {
+        notifyJobError(db, finalJob, pythonErrorMessage);
       }
     } else {
       /* Preserve the descriptive error from Python's error event if we have one */
@@ -147,6 +168,7 @@ function startJob(db, job) {
         error_message: message,
         finished_at: new Date().toISOString(),
       });
+      notifyJobError(db, finalJob, message);
     }
   });
 }
@@ -179,15 +201,19 @@ function cancelJob(jobId, db) {
  */
 function handleEvent(db, jobId, evt) {
   switch (evt.event) {
-    case 'progress':
+    case 'progress': {
+      const total = evt.total_files || 0;
+      const pct = total > 0 ? Math.round((evt.processed / total) * 100) : '?';
+      console.log(`[job ${jobId}] Progress: ${evt.processed}/${total} (${pct}%) — copied=${evt.copied} skipped=${evt.skipped} errors=${evt.errors}`);
       updateJobStatus(db, jobId, 'running', {
         processed: evt.processed,
         copied: evt.copied,
         skipped: evt.skipped,
         errors: evt.errors,
-        total_files: evt.total_files || 0,
+        total_files: total,
       });
       break;
+    }
 
     case 'photo': {
       const photoId = uuidv4();
@@ -251,6 +277,7 @@ function handleEvent(db, jobId, evt) {
     }
 
     case 'done':
+      console.log(`[job ${jobId}] Done — total_bytes=${evt.summary?.total_bytes || 0}`);
       updateJobStatus(db, jobId, 'done', {
         finished_at: new Date().toISOString(),
         total_bytes: evt.summary?.total_bytes || 0,

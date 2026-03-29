@@ -3,6 +3,8 @@ import StatCard from '../components/StatCard';
 import Badge from '../components/Badge';
 import DataTable from '../components/DataTable';
 import { fetchDashboard } from '../api';
+import { useSettings } from '../SettingsContext';
+import { fmtDate } from '../dateFormat';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -21,17 +23,18 @@ const statusVariant = {
   cancelled: 'orange',
 };
 
-const recentColumns = [
-  { key: 'id', header: 'ID', className: 'mono truncate', render: (r) => r.id.slice(0, 8) },
-  { key: 'mode', header: 'Mode', render: (r) => <Badge variant="cyan">{r.mode}</Badge> },
-  { key: 'status', header: 'Status', render: (r) => <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge> },
-  { key: 'processed', header: 'Processed', className: 'mono' },
-  { key: 'copied', header: 'Copied', className: 'mono' },
-  { key: 'created_at', header: 'Created', render: (r) => new Date(r.created_at).toLocaleDateString() },
-];
-
 export default function Dashboard() {
+  const settings = useSettings();
   const [stats, setStats] = useState(null);
+
+  const recentColumns = [
+    { key: 'name', header: 'Name', className: 'truncate', render: (r) => r.name || <span className="mono" style={{ opacity: 0.4 }}>{r.id.slice(0, 8)}</span> },
+    { key: 'mode', header: 'Mode', render: (r) => <Badge variant="cyan">{r.mode}</Badge> },
+    { key: 'status', header: 'Status', render: (r) => <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge> },
+    { key: 'processed', header: 'Processed', className: 'mono' },
+    { key: 'copied', header: 'Copied', className: 'mono' },
+    { key: 'created_at', header: 'Created', render: (r) => fmtDate(r.created_at, settings) },
+  ];
 
   useEffect(() => {
     fetchDashboard().then(setStats).catch(console.error);

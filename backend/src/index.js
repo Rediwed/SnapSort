@@ -8,13 +8,16 @@
 
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { initDb } = require('./db/schema');
-const { initLogCapture, getRecentLogs } = require('./services/logBuffer');
+const { initLogCapture, getRecentLogs, subscribe, unsubscribe } = require('./services/logBuffer');
+const { startCpuMonitor, getCpuHistory, getCpuCurrent, getMemHistory, getMemCurrent } = require('./services/cpuMonitor');
 
 /* Start capturing console output into a ring buffer before anything else logs */
 initLogCapture();
+startCpuMonitor();
 const jobRoutes = require('./routes/jobs');
 const photoRoutes = require('./routes/photos');
 const duplicateRoutes = require('./routes/duplicates');
@@ -37,13 +40,21 @@ const APP_VERSION = (() => {
   }
 })();
 
-const fs = require('fs');
-
 /* ------------------------------------------------------------------ */
 /*  Middleware                                                         */
 /* ------------------------------------------------------------------ */
 app.use(cors());
 app.use(express.json());
+
+/* Simple HTTP request logger — appears in Docker container logs */
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`);
+  });
+  next();
+});
 
 /* ------------------------------------------------------------------ */
 /*  Database                                                           */
@@ -78,6 +89,25 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/logs', (_req, res) => {
   const limit = Math.min(Number(_req.query.limit) || 200, 500);
   res.json(getRecentLogs(limit));
+});
+
+/* SSE log stream — pushes new log entries to connected clients in real time */
+app.get('/api/logs/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('\n');
+
+  const subId = subscribe((entry) => {
+    res.write(`data: ${JSON.stringify(entry)}\n\n`);
+  });
+
+  req.on('close', () => {
+    unsubscribe(subId);
+  });
 });
 
 /* Diagnostics — system info for remote troubleshooting */
@@ -125,6 +155,12 @@ app.get('/api/diagnostics', (_req, res) => {
     }
   } catch { /* /mnt doesn't exist or not accessible */ }
 
+  /* CPU & memory usage */
+  diag.cpuPercent = getCpuCurrent();
+  diag.cpuHistory = getCpuHistory();
+  diag.memoryMBCurrent = getMemCurrent();
+  diag.memoryHistory = getMemHistory();
+
   res.json(diag);
 });
 
@@ -145,6 +181,10 @@ if (fs.existsSync(publicDir)) {
 /* ------------------------------------------------------------------ */
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`SnapSort listening on http://0.0.0.0:${PORT}`);
+
+  /* Start drive monitor for attach/eject/lost notifications */
+  const { startDriveMonitor } = require('./services/driveMonitor');
+  startDriveMonitor(db);
 });
 
 server.on('error', (err) => {
@@ -162,9 +202,14 @@ server.on('error', (err) => {
 /*  Graceful shutdown (Docker SIGTERM / Ctrl-C)                        */
 /* ------------------------------------------------------------------ */
 const { cancelJob, getActiveJobIds } = require('./services/pythonBridge');
+const { stopProgressTimer } = require('./services/ntfyService');
+const { stopDriveMonitor } = require('./services/driveMonitor');
 
 function shutdown(signal) {
   console.log(`\n🛑  Received ${signal} — shutting down gracefully…`);
+
+  /* 0. Stop drive monitor */
+  stopDriveMonitor();
 
   /* 1. Kill any running Python child processes */
   const activeIds = getActiveJobIds();
@@ -172,6 +217,7 @@ function shutdown(signal) {
     console.log(`   Cancelling ${activeIds.length} active job(s)…`);
     for (const jobId of activeIds) {
       try {
+        stopProgressTimer(jobId);
         cancelJob(jobId, db);
       } catch (err) {
         console.error(`   Failed to cancel job ${jobId}:`, err.message);

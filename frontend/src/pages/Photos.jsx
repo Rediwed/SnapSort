@@ -1,8 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useSettings } from '../SettingsContext';
+import { fmtDate, fmtDateTime } from '../dateFormat';
 import Badge from '../components/Badge';
 import PillTabs from '../components/PillTabs';
+import PhotoDetailModal from '../components/PhotoDetailModal';
 import { fetchPhotos, fetchPhotoJobs, photoPreviewUrl, overridePhotos, resolveDuplicate } from '../api';
-import { CircleCheck, Inbox, Info, Download, Folder, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CircleCheck, Inbox, Info, Download, Folder, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
 const statusVariant = { copied: 'green', skipped: 'orange', error: 'red', pending: 'accent', duplicate: 'red' };
 const resolutionVariant = { keep_overwrite: 'green', keep_rename: 'cyan', ignore: 'red', undecided: 'orange' };
@@ -24,28 +28,6 @@ const resolutionTabs = [
 ];
 
 const tabLabels = { copied: 'copied', skipped: 'skipped', duplicate: 'duplicate', error: 'error' };
-
-/* System locale date formatting */
-const fmtDate = (d) => {
-  if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(dt.getTime())) return '—';
-  return dt.toLocaleDateString();
-};
-
-const fmtDateTime = (d) => {
-  if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(dt.getTime())) return '—';
-  return dt.toLocaleString();
-};
-
-const fmtJobLabel = (job) => {
-  const dir = job.source_dir.split('/').pop() || job.source_dir;
-  const date = new Date(job.created_at);
-  const short = date.toLocaleString();
-  return `${dir} — ${short}`;
-};
 
 const fmtPath = (p) => {
   if (!p) return '—';
@@ -118,12 +100,23 @@ const dupSortKeys = {
 };
 
 export default function Photos() {
+  const settings = useSettings();
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState('copied');
+
+  const fmtJobLabel = (job) => {
+    const dir = job.source_dir.split('/').pop() || job.source_dir;
+    const short = fmtDateTime(job.created_at, settings);
+    return `${dir} — ${short}`;
+  };
   const [resolution, setResolution] = useState('');
   const [photos, setPhotos] = useState([]);
   const [total, setTotal] = useState(0);
   const [jobs, setJobs] = useState([]);
-  const [selectedJobId, setSelectedJobId] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState(searchParams.get('jobId') || '');
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const searchTimer = useRef(null);
   const [selected, setSelected] = useState(new Set());
   const [overriding, setOverriding] = useState(false);
 
@@ -142,11 +135,28 @@ export default function Photos() {
   const [preview, setPreview] = useState(null);
   const previewRef = useRef(null);
 
+  /* Detail modal state */
+  const [detailPhoto, setDetailPhoto] = useState(null);
+
   /* Shift-click tracking */
   const lastClickedRef = useRef(null);
 
   const isDupTab = status === 'duplicate';
-  const columns = baseColumns;
+  const columns = status === 'copied'
+    ? baseColumns.filter((c) => c.key !== 'skip_reason')
+    : baseColumns;
+
+  /* Debounced search */
+  const handleSearchChange = (val) => {
+    setSearchInput(val);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setSearch(val), 300);
+  };
+
+  const isValidRegex = useMemo(() => {
+    if (!searchInput) return true;
+    try { new RegExp(searchInput); return true; } catch { return false; }
+  }, [searchInput]);
 
   /* Load job list for dropdown */
   useEffect(() => {
@@ -176,11 +186,12 @@ export default function Photos() {
       params.status = status;
     }
     if (selectedJobId) params.jobId = selectedJobId;
+    if (search) params.search = search;
     fetchPhotos(params).then((d) => {
       setPhotos(d.photos);
       setTotal(d.total);
     }).catch(console.error);
-  }, [status, resolution, selectedJobId, isDupTab, page, pageSize]);
+  }, [status, resolution, selectedJobId, isDupTab, page, pageSize, search]);
 
   useEffect(() => {
     loadPhotos();
@@ -191,7 +202,7 @@ export default function Photos() {
   /* Reset page when filters change (but not page itself) */
   useEffect(() => {
     setPage(1);
-  }, [resolution, selectedJobId]);
+  }, [resolution, selectedJobId, search]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -356,6 +367,20 @@ export default function Photos() {
             ))}
           </select>
           <PillTabs tabs={tabs} active={status} onChange={setStatus} />
+          <div className={`search-box${!isValidRegex ? ' invalid' : ''}`}>
+            <Search size={14} className="search-icon" />
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Regex search filenames…"
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              spellCheck={false}
+            />
+            {searchInput && (
+              <button className="search-clear" onClick={() => { setSearchInput(''); setSearch(''); }}>×</button>
+            )}
+          </div>
           {isDupTab && (
             <>
               <PillTabs tabs={resolutionTabs} active={resolution} onChange={setResolution} />
@@ -462,8 +487,9 @@ export default function Photos() {
                       <div className="dup-side-label"><Download size={14} /> Source (incoming)</div>
                       <div className="dup-side-file">
                         <span
-                          className="filename-preview"
+                          className="filename-preview clickable"
                           title={photo.filename}
+                          onClick={() => setDetailPhoto(photo)}
                           onMouseEnter={(e) => handleMouseEnter(e, photo.id)}
                           onMouseMove={handleMouseMove}
                           onMouseLeave={handleMouseLeave}
@@ -576,23 +602,24 @@ export default function Photos() {
                       </td>
                       <td className="truncate">
                         <span
-                          className="filename-preview"
+                          className="filename-preview clickable"
                           title={photo.filename}
+                          onClick={() => setDetailPhoto(photo)}
                           onMouseEnter={(e) => handleMouseEnter(e, photo.id)}
                           onMouseMove={handleMouseMove}
                           onMouseLeave={handleMouseLeave}
                         >
-                          {photo.filename}
+                          {photo.filename?.replace(/\.[^.]+$/, '') || photo.filename}
                         </span>
                         {photo.overridden_at && <Badge variant="cyan">overridden</Badge>}
                       </td>
                       <td className="mono">{photo.extension}</td>
                       <td><Badge variant={statusVariant[photo.status] || 'accent'}>{photo.status}</Badge></td>
-                      <td className="truncate">{photo.skip_reason || '—'}</td>
+                      {status !== 'copied' && <td className="truncate">{photo.skip_reason || '—'}</td>}
                       <td className="mono">{fmtSize(photo.file_size)}</td>
                       <td className="mono">{photo.width ? `${photo.width}×${photo.height}` : '—'}</td>
-                      <td>{fmtDate(photo.date_taken)}</td>
-                      <td>{fmtDateTime(photo.processed_at)}</td>
+                      <td>{fmtDate(photo.date_taken, settings)}</td>
+                      <td>{fmtDateTime(photo.processed_at, settings)}</td>
                     </tr>
                   );
                 })}
@@ -694,6 +721,13 @@ export default function Photos() {
             </div>
           </div>
         )}
+
+        {/* Photo detail modal */}
+        <PhotoDetailModal
+          photo={detailPhoto}
+          open={!!detailPhoto}
+          onClose={() => setDetailPhoto(null)}
+        />
 
         {/* Hover preview tooltip */}
         {preview && (

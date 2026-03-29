@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Badge from '../components/Badge';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import FilePicker from '../components/FilePicker';
-import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles } from '../api';
+import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles, fetchSettings } from '../api';
 import { FlaskConical, Zap, RefreshCw, Disc, Trash2, AlertTriangle } from 'lucide-react';
 
 const statusVariant = { pending: 'orange', running: 'accent', overriding: 'cyan', done: 'green', error: 'red' };
@@ -12,15 +13,18 @@ export default function Jobs() {
   const [jobs, setJobs] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200, performanceProfile: '' });
+  const [form, setForm] = useState({ name: '', sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200, performanceProfile: '' });
   const [picker, setPicker] = useState({ open: false, field: null });
   const [loadingTest, setLoadingTest] = useState(false);
+  const [diagEnabled, setDiagEnabled] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);    // job to delete
   const [confirmPhotos, setConfirmPhotos] = useState(false); // second confirmation
+  const navigate = useNavigate();
 
   const load = useCallback(() => fetchJobs().then(setJobs).catch(console.error), []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { fetchProfiles().then(setProfiles).catch(console.error); }, []);
+  useEffect(() => { fetchSettings().then((s) => setDiagEnabled(s.diagnostics_enabled === 'true')).catch(() => {}); }, []);
 
   /* Live-poll every 500ms while any job is running or overriding */
   useEffect(() => {
@@ -49,7 +53,7 @@ export default function Jobs() {
     }
     await createJob(form);
     setShowNew(false);
-    setForm({ sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200, performanceProfile: '' });
+    setForm({ name: '', sourceDir: '', destDir: '', mode: 'normal', minWidth: 600, minHeight: 600, minFilesize: 51200, performanceProfile: '' });
     load();
   };
 
@@ -102,7 +106,7 @@ export default function Jobs() {
   };
 
   const columns = [
-    { key: 'id', header: 'ID', className: 'mono truncate', render: (r) => r.id.slice(0, 8) },
+    { key: 'name', header: 'Name', className: 'truncate', render: (r) => r.name || <span className="mono" style={{ opacity: 0.4 }}>{r.id.slice(0, 8)}</span> },
     { key: 'source_dir', header: 'Source', className: 'truncate', render: (r) => r.source_dir.split('/').pop() },
     { key: 'dest_dir', header: 'Destination', className: 'truncate', render: (r) => r.dest_dir.split('/').pop() },
     { key: 'mode', header: 'Mode', render: (r) => <Badge variant="cyan">{r.mode}</Badge> },
@@ -124,7 +128,7 @@ export default function Jobs() {
     },
     {
       key: 'actions', header: 'Actions', render: (r) => (
-        <div className="flex gap-8">
+        <div className="flex gap-8" onClick={(e) => e.stopPropagation()}>
           {r.status === 'pending' && <button className="btn sm primary" onClick={() => startJob(r.id).then(load).catch((e) => { alert(e.message); load(); })}>Start</button>}
           {r.status === 'running' && <button className="btn sm danger" onClick={() => cancelJob(r.id).then(load)}>Cancel</button>}
           {['done', 'error'].includes(r.status) && <button className="btn sm danger" onClick={() => setDeleteTarget(r)}>Delete</button>}
@@ -141,19 +145,21 @@ export default function Jobs() {
           <p>Manage photo organization runs</p>
         </div>
         <div className="flex gap-8">
-          <button
-            className="btn"
-            onClick={handleLoadTest}
-            disabled={loadingTest}
-          >
-            {loadingTest ? 'Loading…' : <><FlaskConical size={14} /> Load Test Data</>}
-          </button>
+          {diagEnabled && (
+            <button
+              className="btn"
+              onClick={handleLoadTest}
+              disabled={loadingTest}
+            >
+              {loadingTest ? 'Loading…' : <><FlaskConical size={14} /> Load Test Data</>}
+            </button>
+          )}
           <button className="btn primary" onClick={() => setShowNew(true)}>+ New Job</button>
         </div>
       </div>
 
       <div className="page-body">
-        <DataTable columns={columns} rows={jobs} emptyMessage="No jobs created yet" />
+        <DataTable columns={columns} rows={jobs} emptyMessage="No jobs created yet" onRowClick={(job) => navigate(`/photos?jobId=${job.id}`)} />
       </div>
 
       <Modal
@@ -167,6 +173,11 @@ export default function Jobs() {
           </>
         }
       >
+        <div className="form-group">
+          <label>Job Name</label>
+          <input className="form-input" placeholder="e.g. Holiday Photos 2024" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <p className="form-hint">Optional — helps identify the job later.</p>
+        </div>
         <div className="form-group">
           <label>Source Directory</label>
           <div className="flex gap-8">
@@ -259,7 +270,7 @@ export default function Jobs() {
         }
       >
         <p style={{ marginBottom: 12 }}>
-          Job <strong className="mono">{deleteTarget?.id?.slice(0, 8)}</strong>{' '}
+          Job <strong>{deleteTarget?.name || <span className="mono">{deleteTarget?.id?.slice(0, 8)}</span>}</strong>{' '}
           — {deleteTarget?.copied || 0} copied, {deleteTarget?.skipped || 0} skipped, {deleteTarget?.errors || 0} errors
         </p>
         <div className="flex gap-8" style={{ flexDirection: 'column' }}>

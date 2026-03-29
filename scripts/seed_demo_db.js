@@ -100,8 +100,8 @@ function seed() {
   console.log(`  Image pools — dest: ${destImages.length}, sources: ${sourceImagePools.map((p) => p.length).join(', ')}, total: ${destImages.length + allSourceImages.length}`);
 
   const insertJob = db.prepare(`
-    INSERT INTO jobs (id, source_dir, dest_dir, status, mode, performance_profile, total_files, processed, copied, skipped, errors, total_bytes, created_at, started_at, finished_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO jobs (id, name, source_dir, dest_dir, status, mode, performance_profile, total_files, processed, copied, skipped, errors, total_bytes, created_at, started_at, finished_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertPhoto = db.prepare(`
@@ -125,6 +125,7 @@ function seed() {
      */
     const jobProfiles = ['usb_external', 'nvme_gen3', 'usb_external', 'hdd_5400rpm'];
     const jobStatuses = ['done', 'done', 'error', 'pending'];
+    const jobNames = ['Camera SD Card Import', 'Downloads Cleanup', 'Phone Backup Sync', 'Old Desktop Recovery'];
 
     const demoDestDir = fs.existsSync(path.join(demoDataDir, 'destination'))
       ? path.resolve(demoDataDir, 'destination')
@@ -151,7 +152,7 @@ function seed() {
 
       if (isPending) {
         /* Pending job — no processing yet, just a ready-to-start entry */
-        insertJob.run(jobId, src, demoDestDir, 'pending', 'normal', profile, 0, 0, 0, 0, 0, 0, new Date().toISOString(), null, null);
+        insertJob.run(jobId, jobNames[j], src, demoDestDir, 'pending', 'normal', profile, 0, 0, 0, 0, 0, 0, new Date().toISOString(), null, null);
         continue;
       }
 
@@ -170,7 +171,7 @@ function seed() {
       const jobStatus = jobStatuses[j];
       const errorMsg = isPartial ? 'Job interrupted — connection lost' : null;
 
-      insertJob.run(jobId, src, dest, jobStatus, 'normal', profile, total, processed, copied, Math.max(0, skipped), errors, totalBytes, created, started, finished);
+      insertJob.run(jobId, jobNames[j], src, dest, jobStatus, 'normal', profile, total, processed, copied, Math.max(0, skipped), errors, totalBytes, created, started, finished);
 
       /* Update error message for partial jobs */
       if (errorMsg) {
@@ -372,7 +373,7 @@ function seed() {
       ? path.resolve(demoDataDir, 'source_external_hdd')
       : sources[4] + ' (demo_seed)';
     const pendingId = uuidv4();
-    insertJob.run(pendingId, pendingSource, demoDestDir, 'pending', 'normal', 'hdd_7200rpm', 0, 0, 0, 0, 0, 0, new Date().toISOString(), null, null);
+    insertJob.run(pendingId, 'External HDD Import', pendingSource, demoDestDir, 'pending', 'normal', 'hdd_7200rpm', 0, 0, 0, 0, 0, 0, new Date().toISOString(), null, null);
   });
 
   tx();

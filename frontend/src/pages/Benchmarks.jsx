@@ -5,6 +5,8 @@ import DataTable from '../components/DataTable';
 import FilePicker from '../components/FilePicker';
 import { fetchBenchmarks, fetchBenchmark, startBenchmark, fetchProfiles, updateSettings } from '../api';
 import { Play, AlertTriangle, BookOpen, HardDrive, Cpu, Zap, RefreshCw, Disc } from 'lucide-react';
+import { useSettings } from '../SettingsContext';
+import { fmtDateTime } from '../dateFormat';
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B';
@@ -19,6 +21,7 @@ function formatBytes(bytes) {
 const PROFILE_ORDER = ['nvme_gen4', 'nvme_gen3', 'sata_ssd', 'hdd_7200rpm', 'hdd_5400rpm', 'usb_external', 'default'];
 
 export default function Benchmarks() {
+  const settings = useSettings();
   const [runs, setRuns] = useState([]);
   const [active, setActive] = useState(null);
   const [profiles, setProfiles] = useState([]);
@@ -133,7 +136,7 @@ export default function Benchmarks() {
     },
     { key: 'throughput', header: 'Copy MB/s', className: 'mono', render: (row) => row.results ? `${row.results.copy_mbps}` : '—' },
     { key: 'profile', header: 'Suggested', render: (row) => row.results ? row.results.suggested_profile : '—' },
-    { key: 'startedAt', header: 'Started', render: (row) => new Date(row.startedAt).toLocaleString() },
+    { key: 'startedAt', header: 'Started', render: (row) => fmtDateTime(row.startedAt, settings) },
     {
       key: 'view', header: '',
       render: (row) => (
