@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Badge from '../components/Badge';
 import FilePicker from '../components/FilePicker';
-import { fetchDrives, prescanDrive, fetchPrescanResult, createJob, startJob } from '../api';
-import { Usb, Zap, HardDrive, Disc, Container, RefreshCw, BarChart3, Search, Camera, Package, FileText, Folder, AlertTriangle, XCircle, Play } from 'lucide-react';
+import { fetchDrives, prescanDrive, fetchPrescanResult, createJob, startJob, updateSettings } from '../api';
+import { Usb, Zap, HardDrive, Disc, Container, RefreshCw, BarChart3, Search, Camera, Package, FileText, Folder, AlertTriangle, XCircle, Play, EyeOff, Eye } from 'lucide-react';
+import { useSettings } from '../SettingsContext';
 
 function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '—';
@@ -24,6 +25,7 @@ const typeIcons = {
 };
 
 export default function Drives() {
+  const { hidden_drives, _refresh: refreshSettings } = useSettings();
   const [drives, setDrives] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scanResults, setScanResults] = useState({}); // path → result
@@ -32,7 +34,23 @@ export default function Drives() {
   const [destDir, setDestDir] = useState('');
   const [creating, setCreating] = useState(false);
   const [picker, setPicker] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const pollTimers = useRef({});
+
+  const hiddenSet = new Set(
+    (hidden_drives || '').split(',').map((s) => s.trim()).filter(Boolean)
+  );
+
+  const toggleHide = async (path) => {
+    const next = new Set(hiddenSet);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    await updateSettings({ hidden_drives: [...next].join(',') });
+    refreshSettings();
+  };
+
+  const visibleDrives = showHidden ? drives : drives.filter((d) => !hiddenSet.has(d.path));
+  const hiddenCount = drives.filter((d) => hiddenSet.has(d.path)).length;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -91,7 +109,7 @@ export default function Drives() {
   };
 
   const handlePrescanAll = () => {
-    for (const drive of drives) {
+    for (const drive of visibleDrives) {
       if (!scanResults[drive.path] && !scanning[drive.path]) {
         handlePrescan(drive.path);
       }
@@ -145,7 +163,12 @@ export default function Drives() {
           <button className="btn" onClick={load} disabled={loading}>
             {loading ? 'Detecting…' : <><RefreshCw size={14} /> Refresh</>}
           </button>
-          <button className="btn primary" onClick={handlePrescanAll} disabled={drives.length === 0}>
+          {hiddenCount > 0 && (
+            <button className="btn" onClick={() => setShowHidden((v) => !v)}>
+              {showHidden ? <><Eye size={14} /> Showing All</> : <><EyeOff size={14} /> {hiddenCount} Hidden</>}
+            </button>
+          )}
+          <button className="btn primary" onClick={handlePrescanAll} disabled={visibleDrives.length === 0}>
             <BarChart3 size={14} /> Scan All
           </button>
         </div>
@@ -157,18 +180,21 @@ export default function Drives() {
             <div className="empty-icon"><Search size={32} /></div>
             <h3>Detecting drives…</h3>
           </div>
-        ) : drives.length === 0 ? (
+        ) : visibleDrives.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon"><HardDrive size={32} /></div>
-            <h3>No external drives detected</h3>
+            <h3>{hiddenCount > 0 ? 'All drives are hidden' : 'No external drives detected'}</h3>
             <p style={{ color: 'var(--text-secondary)', marginTop: 8 }}>
-              Connect an external drive or USB device and click Refresh.
+              {hiddenCount > 0
+                ? <>Click <strong>Show Hidden</strong> above or manage hidden drives in Settings.</>
+                : 'Connect an external drive or USB device and click Refresh.'
+              }
             </p>
           </div>
         ) : (
           <>
             <div className="drives-grid">
-              {drives.map((drive) => {
+              {visibleDrives.map((drive) => {
                 const result = scanResults[drive.path];
                 const isScanning = scanning[drive.path];
                 const isSelected = selected.has(drive.path);
@@ -203,6 +229,14 @@ export default function Drives() {
                       <div className="flex gap-8 items-center">
                         {drive.removable && <Badge variant="orange">Removable</Badge>}
                         <Badge variant="cyan">{drive.type}</Badge>
+                        <button
+                          className="btn sm"
+                          title={hiddenSet.has(drive.path) ? 'Unhide this drive' : 'Hide this drive'}
+                          onClick={(e) => { e.stopPropagation(); toggleHide(drive.path); }}
+                          style={{ padding: '2px 6px', opacity: 0.7 }}
+                        >
+                          {hiddenSet.has(drive.path) ? <Eye size={14} /> : <EyeOff size={14} />}
+                        </button>
                       </div>
                     </div>
 

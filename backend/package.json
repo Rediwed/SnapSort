@@ -1,6 +1,6 @@
 {
   "name": "snapsort-backend",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "description": "SnapSort backend — Express + SQLite API for photo organization",
   "main": "src/index.js",
   "scripts": {

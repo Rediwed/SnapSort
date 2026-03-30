@@ -3,11 +3,17 @@
  */
 
 const { Router } = require('express');
+const os = require('os');
 const { getAllSettings, upsertSetting, bulkUpsertSettings } = require('../db/dao');
 const { sendTestNotification } = require('../services/ntfyService');
 const { subscribe, unsubscribe, sendTestBrowserNotification } = require('../services/browserNotifyService');
 
 const router = Router();
+
+/* Server hardware info (must be before /:key) */
+router.get('/system-info', (_req, res) => {
+  res.json({ cpu_count: os.cpus().length });
+});
 
 /* Get all settings */
 router.get('/', (req, res) => {

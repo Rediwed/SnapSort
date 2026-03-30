@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchSettings, updateSettings, fetchProfiles, updateProfile, createProfile, deleteProfile, sendNtfyTest, sendBrowserNotifyTest } from '../api';
+import { fetchSettings, fetchSystemInfo, updateSettings, fetchProfiles, updateProfile, createProfile, deleteProfile, sendNtfyTest, sendBrowserNotifyTest } from '../api';
 import { Check, Bell, Monitor, Send, Save, Undo2, Plus, Trash2, Copy, Settings as SettingsIcon } from 'lucide-react';
 import PillTabs from '../components/PillTabs';
 import Modal from '../components/Modal';
@@ -47,10 +47,12 @@ export default function Settings() {
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileBase, setNewProfileBase] = useState('default');
   const initialProfileLoad = useRef(false);
+  const [cpuCount, setCpuCount] = useState(4);
 
   useEffect(() => {
     fetchSettings().then((s) => { setValues(s); setSavedValues(s); }).catch(console.error);
     fetchProfiles().then(setProfiles).catch(console.error);
+    fetchSystemInfo().then((info) => setCpuCount(info.cpu_count)).catch(() => {});
   }, []);
 
   /* Initialize editing profile when data first loads */
@@ -81,8 +83,8 @@ export default function Settings() {
     (k) => profileEdits[k] !== savedProfileEdits[k]
   );
   const hasChanges = hasProfileChanges
-    || Object.keys(values).some((k) => values[k] !== savedValues[k])
-    || Object.keys(savedValues).some((k) => values[k] !== savedValues[k]);
+    || Object.keys(values).some((k) => !k.startsWith('_') && values[k] !== savedValues[k])
+    || Object.keys(savedValues).some((k) => !k.startsWith('_') && values[k] !== savedValues[k]);
 
   /* Derived: current extension list */
   const extensions = values.supported_extensions
@@ -95,7 +97,9 @@ export default function Settings() {
   };
 
   const handleSave = async () => {
-    await updateSettings(values);
+    /* Strip transient UI-only keys (prefixed with _) before saving */
+    const toSave = Object.fromEntries(Object.entries(values).filter(([k]) => !k.startsWith('_')));
+    await updateSettings(toSave);
     setSavedValues({ ...values });
 
     // Save profile edits if editing a custom profile with changes
@@ -217,7 +221,7 @@ export default function Settings() {
   const hashSampleBytes = profileEdits.hash_bytes || 8192;
   const concurrentCopies = profileEdits.concurrent_copies || 2;
   const hashWorkers = Number(values.parallel_hash_workers) || 4;
-  const cpuCount = navigator.hardwareConcurrency || 4;
+
   const enableFastHash = values.enable_fast_hash === 'true';
 
   /* Set the default profile for new jobs (first dropdown) */
@@ -354,11 +358,12 @@ export default function Settings() {
         {/* ── File Formats ─────────────────────────────────── */}
         <div className="card">
           <div className="card-header flex justify-between items-center">
-            <h3>File Formats</h3>
+            <h3>File Formats<InfoTip text="The default extensions (JPG, PNG, CR2, NEF, ARW, TIFF, etc.) have full support for EXIF extraction, dimension filtering, and enhanced deduplication. Adding non-default formats is possible — they will fall back to exiftool for date extraction and use file-size/hash-based dedup, but dimension-based filtering may not work if Pillow can't open the format." /></h3>
             <button className="btn sm" onClick={resetExts}>Reset Defaults</button>
           </div>
           <p className="form-hint" style={{ marginBottom: 12 }}>
             Only files matching these extensions will be considered during a scan.
+            Custom formats can be added, but dimension filtering and EXIF-based date sorting require Pillow support for that format. Unsupported formats fall back to exiftool for dates and use hash-based deduplication only.
           </p>
 
           <div className="ext-tags">
@@ -994,6 +999,64 @@ export default function Settings() {
             <p className="form-hint">
               Show a dedicated Diagnostics page in the sidebar with system info, volume mounts, and recent logs.
             </p>
+          </div>
+        </div>
+        {/* ── Hidden Drives ──────────────────── */}
+        <div className="card">
+          <div className="card-header"><h3>Hidden Drives</h3></div>
+          <p className="form-hint" style={{ marginBottom: 8 }}>
+            Mount points listed here are hidden from the Drives page by default. You can also hide/unhide drives directly from the Drives page.
+          </p>
+          {(() => {
+            const hiddenList = (values.hidden_drives || '').split(',').map((s) => s.trim()).filter(Boolean);
+            return hiddenList.length === 0 ? (
+              <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>No drives are hidden.</p>
+            ) : (
+              <div className="flex gap-8" style={{ flexWrap: 'wrap', marginBottom: 8 }}>
+                {hiddenList.map((p) => (
+                  <span key={p} className="badge cyan" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span className="mono">{p}</span>
+                    <button
+                      onClick={() => {
+                        const next = hiddenList.filter((x) => x !== p).join(',');
+                        handleChange('hidden_drives', next);
+                      }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, lineHeight: 1, fontSize: 14, fontWeight: 700 }}
+                      title="Remove"
+                    >&times;</button>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+          <div className="flex gap-8">
+            <input
+              className="form-input mono"
+              placeholder="/mnt/point"
+              value={values._hiddenDriveInput || ''}
+              onChange={(e) => setValues((prev) => ({ ...prev, _hiddenDriveInput: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const val = (values._hiddenDriveInput || '').trim();
+                  if (!val) return;
+                  const list = (values.hidden_drives || '').split(',').map((s) => s.trim()).filter(Boolean);
+                  if (!list.includes(val)) {
+                    handleChange('hidden_drives', [...list, val].join(','));
+                  }
+                  setValues((prev) => ({ ...prev, _hiddenDriveInput: '' }));
+                }
+              }}
+              style={{ flex: 1 }}
+            />
+            <button className="btn sm" onClick={() => {
+              const val = (values._hiddenDriveInput || '').trim();
+              if (!val) return;
+              const list = (values.hidden_drives || '').split(',').map((s) => s.trim()).filter(Boolean);
+              if (!list.includes(val)) {
+                handleChange('hidden_drives', [...list, val].join(','));
+              }
+              setValues((prev) => ({ ...prev, _hiddenDriveInput: '' }));
+            }}>Add</button>
           </div>
         </div>
         </div>{/* end settings-cards-stack */}

@@ -213,6 +213,8 @@ function initDb(dbPath) {
       /* Browser notification defaults */
       browser_notify_enabled: 'false',
       diagnostics_enabled: 'false',
+      /* Hidden drives — comma-separated mount-point paths */
+      hidden_drives: '',
       /* Display preferences */
       date_format: 'system',
       time_format: 'system',

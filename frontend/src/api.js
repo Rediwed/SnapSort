@@ -55,6 +55,7 @@ export const resolveDuplicate = (id, resolution) =>
 
 /* ---- Settings ---- */
 export const fetchSettings = () => request('/settings');
+export const fetchSystemInfo = () => request('/settings/system-info');
 export const updateSettings = (pairs) => request('/settings', { method: 'PATCH', body: JSON.stringify(pairs) });
 export const sendNtfyTest = () => request('/settings/ntfy-test', { method: 'POST' });
 export const sendBrowserNotifyTest = () => request('/settings/browser-notify-test', { method: 'POST' });

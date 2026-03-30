@@ -1,6 +1,6 @@
 {
   "name": "snapsort",
-  "version": "1.0.0",
+  "version": "1.2.1",
   "private": true,
   "scripts": {
     "dev": "concurrently -k -n BE,FE -c blue,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",

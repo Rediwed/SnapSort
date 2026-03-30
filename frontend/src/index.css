@@ -928,6 +928,8 @@ td.truncate {
   margin-bottom: 0;
 }
 
+.form-toggle span .info-tip { text-transform: none; letter-spacing: normal; font-weight: 400; }
+
 /* ================================================================== */
 /*  Modal                                                              */
 /* ================================================================== */
@@ -1924,7 +1926,10 @@ td .badge.cyan {
   background: var(--accent-muted);
 }
 
-.info-tip-bubble {
+.info-tip-bubble,
+.form-group .info-tip-bubble,
+.form-toggle .info-tip-bubble,
+.card-header .info-tip-bubble {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;
