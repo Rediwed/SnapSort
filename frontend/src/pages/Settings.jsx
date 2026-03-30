@@ -3,6 +3,7 @@ import { fetchSettings, updateSettings, fetchProfiles, updateProfile, createProf
 import { Check, Bell, Monitor, Send, Save, Undo2, Plus, Trash2, Copy, Settings as SettingsIcon } from 'lucide-react';
 import PillTabs from '../components/PillTabs';
 import Modal from '../components/Modal';
+import InfoTip from '../components/InfoTip';
 import { fmtDate, fmtDateTime } from '../dateFormat';
 import { useSettings } from '../SettingsContext';
 
@@ -326,25 +327,25 @@ export default function Settings() {
           <div className="card-header"><h3>Filter &amp; Quality</h3></div>
           <div className="form-row-2">
             <div className="form-group">
-              <label>Min Width (px)</label>
+              <label>Min Width (px)<InfoTip text="Photos narrower than this will be skipped during import. Helps filter out thumbnails and icons." /></label>
               <input className="form-input mono" type="number" value={values.min_width || ''} onChange={(e) => handleChange('min_width', e.target.value)} />
             </div>
             <div className="form-group">
-              <label>Min Height (px)</label>
+              <label>Min Height (px)<InfoTip text="Photos shorter than this will be skipped during import. Helps filter out thumbnails and icons." /></label>
               <input className="form-input mono" type="number" value={values.min_height || ''} onChange={(e) => handleChange('min_height', e.target.value)} />
             </div>
           </div>
           <div className="form-group">
-            <label>Min File Size (bytes)</label>
+            <label>Min File Size (bytes)<InfoTip text="Files smaller than this byte threshold are excluded. Useful for filtering out corrupted or placeholder files." /></label>
             <input className="form-input mono" type="number" value={values.min_filesize || ''} onChange={(e) => handleChange('min_filesize', e.target.value)} />
           </div>
           <div className="form-row-2">
             <div className="form-group">
-              <label>Dedup Strict Threshold (%)</label>
+              <label>Dedup Strict Threshold (%)<InfoTip text="Similarity percentage above which files are treated as exact duplicates and automatically skipped. Higher values require closer matches." /></label>
               <input className="form-input mono" type="number" value={values.dedup_strict_threshold || ''} onChange={(e) => handleChange('dedup_strict_threshold', e.target.value)} />
             </div>
             <div className="form-group">
-              <label>Dedup Log Threshold (%)</label>
+              <label>Dedup Log Threshold (%)<InfoTip text="Similarity percentage above which potential duplicates are logged for manual review, but not automatically removed." /></label>
               <input className="form-input mono" type="number" value={values.dedup_log_threshold || ''} onChange={(e) => handleChange('dedup_log_threshold', e.target.value)} />
             </div>
           </div>
@@ -517,7 +518,7 @@ export default function Settings() {
                 disabled={isEditingBuiltIn}
                 onChange={(e) => handleProfileEdit('enable_multithreading', e.target.checked ? 1 : 0)}
               />
-              <span>Enable Multi-threading</span>
+              <span>Enable Multi-threading<InfoTip text="Distributes photo processing across multiple CPU cores. Significantly faster on multi-core systems, especially with SSDs." /></span>
             </label>
             <p className="form-hint">
               Use parallel workers to process photos concurrently.
@@ -533,7 +534,7 @@ export default function Settings() {
                 disabled={isEditingBuiltIn}
                 onChange={(e) => handleProfileEdit('sequential_processing', e.target.checked ? 1 : 0)}
               />
-              <span>Sequential Processing</span>
+              <span>Sequential Processing<InfoTip text="Processes files in order rather than in parallel. Recommended for traditional hard drives (HDDs) where random access is slow." /></span>
             </label>
             <p className="form-hint">
               Process files one-by-one in order. Best for HDDs to avoid random seeks.
@@ -544,7 +545,7 @@ export default function Settings() {
           <div className="form-row-2">
           {/* Max Workers */}
           <div className="form-group">
-            <label>Worker Threads <span className="mono badge">{maxWorkers}</span></label>
+            <label>Worker Threads <span className="mono badge">{maxWorkers}</span><InfoTip text="Number of parallel threads for processing photos. More threads speed things up on SSDs and multi-core CPUs, but may cause slowdowns on HDDs." /></label>
             <input
               type="range"
               className="form-range"
@@ -563,7 +564,7 @@ export default function Settings() {
 
           {/* Hash Workers */}
           <div className="form-group">
-            <label>Hash Workers <span className="mono badge">{hashWorkers}</span></label>
+            <label>Hash Workers <span className="mono badge">{hashWorkers}</span><InfoTip text="Number of parallel threads used for computing file hashes during deduplication. More workers speed up the dedup phase." /></label>
             <input
               type="range"
               className="form-range"
@@ -583,7 +584,7 @@ export default function Settings() {
           <div className="form-row-2">
           {/* Batch Size */}
           <div className="form-group">
-            <label>Batch Size <span className="mono badge">{batchSize}</span></label>
+            <label>Batch Size <span className="mono badge">{batchSize}</span><InfoTip text="Number of files each worker thread processes before reporting progress. Larger batches reduce overhead but delay progress updates." /></label>
             <input
               type="range"
               className="form-range"
@@ -602,7 +603,7 @@ export default function Settings() {
 
           {/* Concurrent Copies */}
           <div className="form-group">
-            <label>Concurrent Copies <span className="mono badge">{concurrentCopies}</span></label>
+            <label>Concurrent Copies <span className="mono badge">{concurrentCopies}</span><InfoTip text="Maximum number of files being copied to the destination at the same time. Higher values improve throughput on fast drives." /></label>
             <input
               type="range"
               className="form-range"
@@ -629,7 +630,7 @@ export default function Settings() {
                 checked={enableFastHash}
                 onChange={(e) => handleChange('enable_fast_hash', e.target.checked ? 'true' : 'false')}
               />
-              <span>Enable Fast Hashing</span>
+              <span>Enable Fast Hashing<InfoTip text="Reads only portions of each file (beginning, middle, end) instead of the entire content. Dramatically faster for large files with a very small chance of false matches." /></span>
             </label>
             <p className="form-hint">
               Sample beginning, middle and end of files instead of reading the full content. Much faster on large files, especially on SSDs.
@@ -638,7 +639,7 @@ export default function Settings() {
 
           {/* Hash Sample Bytes */}
           <div className="form-group">
-            <label>Hash Sample Size <span className="mono badge">{hashSampleBytes.toLocaleString()}</span></label>
+            <label>Hash Sample Size <span className="mono badge">{hashSampleBytes.toLocaleString()}</span><InfoTip text="Bytes read from each file section (start, middle, end) for quick dedup comparison. Larger samples are more accurate but slower." /></label>
             <input
               type="range"
               className="form-range"
@@ -832,7 +833,7 @@ export default function Settings() {
                   onChange={(e) => handleChange('ntfy_on_progress', e.target.checked ? 'true' : 'false')}
                   disabled={values.ntfy_enabled !== 'true' && values.browser_notify_enabled !== 'true'}
                 />
-                <span>Recurring Progress Updates</span>
+                <span>Recurring Progress Updates<InfoTip text="Sends periodic notification updates with current job stats (files processed, percentage complete) at the configured interval." /></span>
               </label>
               <p className="form-hint">Periodically send in-progress stats while a job is running.</p>
             </div>
@@ -954,7 +955,7 @@ export default function Settings() {
         <div className="card">
           <div className="card-header"><h3>Appearance</h3></div>
           <div className="form-group">
-            <label>Theme</label>
+            <label>Theme<InfoTip text="Controls the UI colour scheme. 'System' follows your OS dark/light mode automatically." /></label>
             <select
               className="form-select"
               value={values.theme || 'dark'}
@@ -988,7 +989,7 @@ export default function Settings() {
                 checked={values.diagnostics_enabled === 'true'}
                 onChange={(e) => handleChange('diagnostics_enabled', e.target.checked ? 'true' : 'false')}
               />
-              <span>Enable Diagnostics Page</span>
+              <span>Enable Diagnostics Page<InfoTip text="Adds a Diagnostics page to the sidebar showing system information, mounted volumes, and recent log output for troubleshooting." /></span>
             </label>
             <p className="form-hint">
               Show a dedicated Diagnostics page in the sidebar with system info, volume mounts, and recent logs.

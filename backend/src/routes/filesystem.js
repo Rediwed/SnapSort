@@ -83,7 +83,7 @@ router.get('/browse', (req, res) => {
 router.get('/roots', (_req, res) => {
   const home = os.homedir();
   const roots = [
-    { name: 'Home', path: home, icon: '🏠' },
+    { name: 'Home', path: home, icon: 'home' },
   ];
 
   /* Add common mount points */
@@ -102,13 +102,13 @@ router.get('/roots', (_req, res) => {
                       mp === '/mnt/user'         ? 'Shares'  :
                       mp.startsWith('/media')  ? 'Media'   :
                       mp.startsWith('/mnt/photos') ? mp.split('/').pop() : 'Mount';
-        roots.push({ name: label, path: mp, icon: '💾' });
+        roots.push({ name: label, path: mp, icon: 'drive' });
       }
     } catch { /* skip */ }
   }
 
   /* Root filesystem */
-  roots.push({ name: '/', path: '/', icon: '📁' });
+  roots.push({ name: '/', path: '/', icon: 'folder' });
 
   res.json(roots);
 });

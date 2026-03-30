@@ -62,6 +62,7 @@ const compareFields = [
   { key: 'height',     matchKey: 'match_height',     label: 'Height',     fmt: (v) => v ?? '—', unit: 'px' },
   { key: 'dpi',        matchKey: 'match_dpi',        label: 'DPI',        fmt: (v) => v ?? '—' },
   { key: 'date_taken', matchKey: 'match_date_taken', label: 'Date Taken', fmt: fmtDate },
+  { key: 'hash',       matchKey: 'match_hash',       label: 'Hash',       fmt: (v) => v ? v.slice(0, 12) + '…' : '—' },
 ];
 
 /* Generate page number buttons with ellipsis for large ranges */
@@ -152,6 +153,7 @@ export default function Photos() {
   /* Hover preview state */
   const [preview, setPreview] = useState(null);
   const previewRef = useRef(null);
+  const canHover = typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches;
 
   /* Detail modal state */
   const [detailPhoto, setDetailPhoto] = useState(null);
@@ -350,12 +352,14 @@ export default function Photos() {
     }
   };
 
-  /* Hover preview */
+  /* Hover preview (disabled on touch-only devices) */
   const handleMouseEnter = (e, photoId) => {
+    if (!canHover) return;
     setPreview({ id: photoId, x: e.clientX + 16, y: e.clientY - 60 });
   };
 
   const handleMouseMove = (e) => {
+    if (!canHover) return;
     setPreview((prev) => prev ? { ...prev, x: e.clientX + 16, y: e.clientY - 60 } : null);
   };
 
@@ -530,8 +534,9 @@ export default function Photos() {
                       <div className="dup-side-file">
                         {photo.matched_photo_id ? (
                           <span
-                            className="filename-preview"
+                            className="filename-preview clickable"
                             title={photo.match_filename || ''}
+                            onClick={() => setDetailPhoto({ id: photo.matched_photo_id, filename: photo.match_filename || 'matched photo', dest_path: photo.match_dest_path, file_size: photo.match_file_size, width: photo.match_width, height: photo.match_height, date_taken: photo.match_date_taken, hash: photo.match_hash })}
                             onMouseEnter={(e) => handleMouseEnter(e, photo.matched_photo_id)}
                             onMouseMove={handleMouseMove}
                             onMouseLeave={handleMouseLeave}

@@ -94,7 +94,8 @@ function listPhotos(db, { jobId, status, isDuplicate, resolution, search, limit 
       mp.dpi        AS match_dpi,
       mp.file_size  AS match_file_size,
       mp.date_taken AS match_date_taken,
-      mp.dest_path  AS match_dest_path
+      mp.dest_path  AS match_dest_path,
+      mp.hash       AS match_hash
     FROM photos p
     LEFT JOIN duplicates d  ON d.photo_id = p.id
     LEFT JOIN photos     mp ON mp.id = d.matched_photo_id

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { browseDirectory, fetchFilesystemRoots, fetchDrives } from '../api';
-import { Plug, Zap, Disc, Container, HardDrive, FolderOpen, File, ArrowUp, FolderSearch } from 'lucide-react';
+import { Plug, Zap, Disc, Container, HardDrive, FolderOpen, File, ArrowUp, FolderSearch, Home } from 'lucide-react';
 
 /**
  * Server-side file/folder picker.
@@ -21,6 +21,7 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('browse'); // 'browse' | 'drives'
+  const canHover = typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches;
 
   /* Load filesystem roots + drives on mount */
   useEffect(() => {
@@ -107,9 +108,16 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
                   }}>
                     <strong style={{ color: 'var(--text-primary)' }}><Container size={14} style={{ verticalAlign: 'middle' }} /> Running in Docker?</strong><br />
                     Only paths mounted into the container are visible. Add volume mappings in your
-                    container settings for any drives you want to browse:<br />
-                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>/mnt/disks → /mnt/disks</code> (Unraid USB/external drives)<br />
-                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>/mnt/user → /mnt/user</code> (Unraid user shares)
+                    container settings for any drives you want to browse.
+                    To detect newly connected drives without restarting the container, enable
+                    path propagation on the host mount (e.g.{' '}
+                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>:rslave</code> or{' '}
+                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>:shared</code>{' '}
+                    bind-propagation).<br /><br />
+                    <strong>Example mappings:</strong><br />
+                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>/mnt/disks:/mnt/disks:rslave</code> (external / USB drives)<br />
+                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>/media:/media:rslave</code> (auto-mounted volumes on Linux)<br />
+                    <code style={{ fontSize: 11, color: 'var(--accent)' }}>/mnt/user:/mnt/user</code> (network or shared storage)
                   </div>
                 </div>
               ) : (
@@ -158,7 +166,7 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
                     onClick={() => browse(r.path)}
                     title={r.path}
                   >
-                    {r.icon} {r.name}
+                    {r.icon === 'home' ? <Home size={14} /> : r.icon === 'drive' ? <HardDrive size={14} /> : <FolderOpen size={14} />}{' '}{r.name}
                   </button>
                 ))}
               </div>
@@ -195,8 +203,8 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
                         fontFamily: 'var(--font-ui)', fontSize: 13, textAlign: 'left',
                         width: '100%',
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      onMouseEnter={canHover ? (e) => e.currentTarget.style.background = 'var(--bg-hover)' : undefined}
+                      onMouseLeave={canHover ? (e) => e.currentTarget.style.background = 'none' : undefined}
                     >
                       <span style={{ width: 20, textAlign: 'center' }}><ArrowUp size={16} /></span>
                       <span>..</span>
@@ -220,8 +228,8 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
                         fontFamily: 'var(--font-ui)', fontSize: 13, textAlign: 'left',
                         width: '100%',
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      onMouseEnter={canHover ? (e) => e.currentTarget.style.background = 'var(--bg-hover)' : undefined}
+                      onMouseLeave={canHover ? (e) => e.currentTarget.style.background = 'none' : undefined}
                     >
                       <span style={{ width: 20, textAlign: 'center' }}>
                         {entry.type === 'directory' ? <FolderOpen size={16} /> : <File size={16} />}
