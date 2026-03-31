@@ -352,6 +352,62 @@ function notifyDriveLost(db, drive) {
   }
 }
 
+/** Immich upload started */
+function notifyImmichUploadStarted(db, job) {
+  const settings = loadSettings(db);
+  const label = job.name || job.id.slice(0, 8);
+  const title = `📤 ${label} — Uploading to Immich`;
+  const body = `Destination: ${job.dest_dir}\nServer: ${settings.immich_server || 'unknown'}`;
+
+  if (isEnabled(settings, 'ntfy_on_immich_upload')) {
+    sendQuiet(settings, { title, message: body, priority: '3' });
+  }
+  if (isBrowserEnabled(settings, 'ntfy_on_immich_upload')) {
+    broadcast({ type: 'immich_upload_started', title, body });
+  }
+}
+
+/** Immich upload completed */
+function notifyImmichUploadCompleted(db, job) {
+  const settings = loadSettings(db);
+  const label = job.name || job.id.slice(0, 8);
+  const elapsed = duration(job.immich_started_at);
+  const lines = [
+    `Uploaded: ${job.immich_uploaded || 0}`,
+    `Duplicates: ${job.immich_duplicates || 0}`,
+    `Errors: ${job.immich_errors || 0}`,
+  ];
+  if (elapsed) lines.push(`Duration: ${elapsed}`);
+
+  const title = `✅ ${label} — Immich Upload Complete`;
+  const body = lines.join('\n');
+
+  if (isEnabled(settings, 'ntfy_on_immich_upload')) {
+    sendQuiet(settings, { title, message: body, priority: '3' });
+  }
+  if (isBrowserEnabled(settings, 'ntfy_on_immich_upload')) {
+    broadcast({ type: 'immich_upload_completed', title, body });
+  }
+}
+
+/** Immich upload error */
+function notifyImmichUploadError(db, job, errorMessage) {
+  const settings = loadSettings(db);
+  const label = job.name || job.id.slice(0, 8);
+  const lines = [`Destination: ${job.dest_dir}`];
+  if (errorMessage) lines.push(`Error: ${errorMessage}`);
+
+  const title = `❌ ${label} — Immich Upload Failed`;
+  const body = lines.join('\n');
+
+  if (isEnabled(settings, 'ntfy_on_immich_upload')) {
+    sendQuiet(settings, { title, message: body, priority: '4' });
+  }
+  if (isBrowserEnabled(settings, 'ntfy_on_immich_upload')) {
+    broadcast({ type: 'immich_upload_error', title, body });
+  }
+}
+
 /** Send a test notification */
 function sendTestNotification(db) {
   const settings = loadSettings(db);
@@ -372,6 +428,9 @@ module.exports = {
   notifyDriveAttached,
   notifyDriveEjected,
   notifyDriveLost,
+  notifyImmichUploadStarted,
+  notifyImmichUploadCompleted,
+  notifyImmichUploadError,
   sendTestNotification,
   stopProgressTimer,
 };

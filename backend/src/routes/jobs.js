@@ -283,4 +283,49 @@ router.post('/:id/override', async (req, res) => {
   });
 });
 
+/* ================================================================== */
+/*  Immich Upload — send completed job output to Immich               */
+/* ================================================================== */
+
+const { startImmichUpload, cancelImmichUpload, isImmichGoAvailable } = require('../services/immichBridge');
+const { updateImmichStatus } = require('../db/dao');
+
+/* Start Immich upload for a completed job */
+router.post('/:id/immich-upload', (req, res) => {
+  const job = getJob(req.db, req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.status !== 'done') return res.status(409).json({ error: 'Can only upload from a completed job' });
+  if (job.immich_status === 'running') return res.status(409).json({ error: 'Immich upload already running' });
+
+  // Check immich-go is available
+  if (!isImmichGoAvailable()) {
+    return res.status(503).json({ error: 'immich-go is not installed or not in PATH' });
+  }
+
+  // Check dest_dir exists
+  if (!fs.existsSync(job.dest_dir)) {
+    return res.status(400).json({ error: `Destination directory not found: ${job.dest_dir}` });
+  }
+
+  try {
+    startImmichUpload(req.db, job);
+    res.json(getJob(req.db, req.params.id));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* Cancel a running Immich upload */
+router.post('/:id/immich-cancel', (req, res) => {
+  const job = getJob(req.db, req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  cancelImmichUpload(job.id);
+  const updated = updateImmichStatus(req.db, job.id, 'cancelled', {
+    immich_error_message: 'Upload cancelled by user',
+    immich_finished_at: new Date().toISOString(),
+  });
+  res.json(updated);
+});
+
 module.exports = router;

@@ -16,7 +16,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const { updateJobStatus, insertPhoto, insertDuplicate, getAllSettings, getProfile } = require('../db/dao');
+const { updateJobStatus, insertPhoto, insertDuplicate, getAllSettings, getProfile, getJob } = require('../db/dao');
 const { v4: uuidv4 } = require('uuid');
 const {
   notifyJobStarted, notifyJobCompleted, notifyJobError,
@@ -157,6 +157,23 @@ function startJob(db, job) {
       if (!pythonErrorMessage) {
         updateJobStatus(db, job.id, 'done', { finished_at: new Date().toISOString() });
         notifyJobCompleted(db, finalJob);
+
+        // Auto-upload to Immich if enabled
+        try {
+          const settings = getAllSettings(db);
+          if (settings.immich_enabled === 'true' && settings.immich_auto_upload === 'true') {
+            const { isImmichGoAvailable, startImmichUpload } = require('./immichBridge');
+            if (isImmichGoAvailable()) {
+              const freshJob = getJob(db, job.id);
+              if (freshJob) {
+                console.log(`[job ${job.id}] Auto-uploading to Immich...`);
+                startImmichUpload(db, freshJob);
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`[job ${job.id}] Auto-upload to Immich failed: ${err.message}`);
+        }
       } else {
         notifyJobError(db, finalJob, pythonErrorMessage);
       }

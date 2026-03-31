@@ -66,6 +66,26 @@ function initDb(dbPath) {
     }
   } catch { /* table doesn't exist yet — CREATE above handled it */ }
 
+  /* Migration: add Immich upload columns to existing jobs tables */
+  try {
+    const cols = db.pragma('table_info(jobs)').map((c) => c.name);
+    const immichCols = {
+      immich_status: 'TEXT',              // null | pending | running | done | error | cancelled
+      immich_uploaded: 'INTEGER DEFAULT 0',
+      immich_duplicates: 'INTEGER DEFAULT 0',
+      immich_errors: 'INTEGER DEFAULT 0',
+      immich_assets: 'INTEGER DEFAULT 0',
+      immich_started_at: 'TEXT',
+      immich_finished_at: 'TEXT',
+      immich_error_message: 'TEXT',
+    };
+    for (const [col, type] of Object.entries(immichCols)) {
+      if (!cols.includes(col)) {
+        db.exec(`ALTER TABLE jobs ADD COLUMN ${col} ${type}`);
+      }
+    }
+  } catch { /* table doesn't exist yet — CREATE above handled it */ }
+
   /* ---- photos ---- */
   db.exec(`
     CREATE TABLE IF NOT EXISTS photos (
@@ -210,6 +230,14 @@ function initDb(dbPath) {
       ntfy_on_drive_scan: 'false',
       ntfy_on_drive_attach: 'true',
       ntfy_on_drive_lost: 'true',
+      /* Immich integration defaults */
+      immich_enabled: 'false',
+      immich_server: '',
+      immich_api_key: '',
+      immich_auto_upload: 'false',
+      immich_album_mode: 'none',          // none | job_name | folder_as_album
+      immich_dry_run: 'false',
+      ntfy_on_immich_upload: 'true',
       /* Browser notification defaults */
       browser_notify_enabled: 'false',
       diagnostics_enabled: 'false',

@@ -138,6 +138,14 @@ app.get('/api/diagnostics', (_req, res) => {
     diag.exiftoolVersion = 'NOT FOUND';
   }
 
+  /* immich-go availability */
+  try {
+    const { getImmichGoVersion } = require('./services/immichBridge');
+    diag.immichGoVersion = getImmichGoVersion() || 'NOT FOUND';
+  } catch {
+    diag.immichGoVersion = 'NOT FOUND';
+  }
+
   /* List /mnt mounts visible inside the container */
   try {
     const entries = fs.readdirSync('/mnt', { withFileTypes: true });
@@ -221,6 +229,20 @@ function shutdown(signal) {
         cancelJob(jobId, db);
       } catch (err) {
         console.error(`   Failed to cancel job ${jobId}:`, err.message);
+      }
+    }
+  }
+
+  /* 1b. Kill any running Immich uploads */
+  const { cancelImmichUpload, getActiveImmichUploadIds } = require('./services/immichBridge');
+  const activeImmichIds = getActiveImmichUploadIds();
+  if (activeImmichIds.length) {
+    console.log(`   Cancelling ${activeImmichIds.length} active Immich upload(s)…`);
+    for (const jobId of activeImmichIds) {
+      try {
+        cancelImmichUpload(jobId);
+      } catch (err) {
+        console.error(`   Failed to cancel Immich upload ${jobId}:`, err.message);
       }
     }
   }

@@ -42,7 +42,7 @@ function updateJobStatus(db, id, status, extra = {}) {
 
   for (const [key, value] of Object.entries(extra)) {
     /* Only allow known columns */
-    const allowed = ['processed', 'copied', 'skipped', 'errors', 'total_files', 'total_bytes', 'error_message', 'started_at', 'finished_at'];
+    const allowed = ['processed', 'copied', 'skipped', 'errors', 'total_files', 'total_bytes', 'error_message', 'started_at', 'finished_at', 'immich_status', 'immich_uploaded', 'immich_duplicates', 'immich_errors', 'immich_assets', 'immich_started_at', 'immich_finished_at', 'immich_error_message'];
     if (allowed.includes(key)) {
       sets.push(`${key} = ?`);
       params.push(value);
@@ -272,6 +272,21 @@ function updatePhotoOverride(db, id, { status, destPath, overriddenAt }) {
 /*  DASHBOARD                                                          */
 /* ================================================================== */
 
+function updateImmichStatus(db, jobId, immichStatus, extra = {}) {
+  const sets = ['immich_status = ?'];
+  const params = [immichStatus];
+  const allowed = ['immich_uploaded', 'immich_duplicates', 'immich_errors', 'immich_assets', 'immich_started_at', 'immich_finished_at', 'immich_error_message'];
+  for (const [key, value] of Object.entries(extra)) {
+    if (allowed.includes(key)) {
+      sets.push(`${key} = ?`);
+      params.push(value);
+    }
+  }
+  params.push(jobId);
+  db.prepare(`UPDATE jobs SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getJob(db, jobId);
+}
+
 function getDashboardStats(db) {
   const totalJobs = db.prepare('SELECT COUNT(*) AS c FROM jobs').get().c;
   const activeJobs = db.prepare("SELECT COUNT(*) AS c FROM jobs WHERE status IN ('pending','running')").get().c;
@@ -298,7 +313,7 @@ function getDashboardStats(db) {
 }
 
 module.exports = {
-  createJob, getJob, listJobs, updateJobStatus, deleteJob,
+  createJob, getJob, listJobs, updateJobStatus, updateImmichStatus, deleteJob,
   insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths,
   getPhotosByIds, updatePhotoOverride,
   insertDuplicate, listDuplicates, resolveDuplicate, getDuplicate, countDuplicates,
