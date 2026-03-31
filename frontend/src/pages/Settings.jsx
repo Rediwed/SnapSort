@@ -853,6 +853,21 @@ export default function Settings() {
               </label>
             </div>
 
+            <div className="form-group">
+              <label className="form-toggle">
+                <input
+                  type="checkbox"
+                  checked={values.ntfy_on_immich_upload === 'true'}
+                  onChange={(e) => handleChange('ntfy_on_immich_upload', e.target.checked ? 'true' : 'false')}
+                  disabled={(values.ntfy_enabled !== 'true' && values.browser_notify_enabled !== 'true') || values.immich_enabled !== 'true'}
+                />
+                <span>Immich Upload Start / Complete / Error</span>
+              </label>
+              {values.immich_enabled !== 'true' && (
+                <p className="form-hint" style={{ opacity: 0.5 }}>Enable Immich integration in the Immich tab first.</p>
+              )}
+            </div>
+
             <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />
 
             <div className="form-group">
@@ -1247,19 +1262,6 @@ export default function Settings() {
                 <span>Dry Run</span>
               </label>
               <p className="form-hint">Scan and report what would be uploaded, without actually uploading to Immich.</p>
-            </div>
-
-            <div className="form-group">
-              <label className="form-toggle">
-                <input
-                  type="checkbox"
-                  checked={values.ntfy_on_immich_upload === 'true'}
-                  onChange={(e) => handleChange('ntfy_on_immich_upload', e.target.checked ? 'true' : 'false')}
-                  disabled={values.immich_enabled !== 'true'}
-                />
-                <span>Upload Notifications</span>
-              </label>
-              <p className="form-hint">Send notifications when Immich uploads start, complete, or fail.</p>
             </div>
           </div>
         </div>
