@@ -90,6 +90,13 @@ export const fetchBenchmarks = () => request('/benchmarks');
 export const fetchBenchmark = (id) => request(`/benchmarks/${id}`);
 export const startBenchmark = (body = {}) => request('/benchmarks', { method: 'POST', body: JSON.stringify(body) });
 
+/* ---- Immich Integration ---- */
+export const testImmichConnection = (server, apiKey) =>
+  request('/settings/immich-test', { method: 'POST', body: JSON.stringify({ server, apiKey }) });
+export const fetchImmichGoStatus = () => request('/settings/immich-go-status');
+export const startImmichUpload = (jobId) => request(`/jobs/${jobId}/immich-upload`, { method: 'POST' });
+export const cancelImmichUpload = (jobId) => request(`/jobs/${jobId}/immich-cancel`, { method: 'POST' });
+
 /* ---- Health ---- */
 export const fetchHealth = () => request('/health');
 export const fetchDiagnostics = () => request('/diagnostics');
