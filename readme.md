@@ -61,6 +61,17 @@ Real-time feedback during operation:
 - **CLI**: Animated spinner during initialization (destination indexing and source scanning), inline progress with files processed, copied, skipped, errors, and ETA, plus a comprehensive log file recording every action
 - **Web GUI**: Live progress bars per job, real-time file counter updates (polled every 500 ms), and an always-visible sidebar indicator showing the currently processing file
 
+### 📤 Immich Integration
+Upload organized photos directly to your [Immich](https://immich.app/) server — making SnapSort a single-pane-of-glass for the entire photo pipeline: **source → filter → dedup → organize → Immich**.
+
+- **One-click upload**: After a job completes, hit "Upload to Immich" to send organized photos to your library
+- **Auto-upload**: Optionally trigger uploads automatically when a job finishes
+- **Album modes**: No album, job name as album, or folder-as-album mapping
+- **Dry-run mode**: Preview what would be uploaded without sending anything
+- **Live progress**: Track uploads, duplicates, and errors in real time on the Jobs page
+- **Notifications**: Get ntfy/browser alerts for upload start, completion, and errors
+- **Powered by [immich-go](https://github.com/simulot/immich-go)**: The proven CLI tool for Immich uploads, bundled in the Docker image
+
 ### 🌐 Web GUI
 A full-stack web interface for managing photo organization visually:
 
@@ -364,6 +375,45 @@ This creates 5 source datasets simulating real-world scenarios (camera SD card, 
 - **Deduplication**: Configure strict/log thresholds and partial hash size
 - **Job management**: The GUI supports creating multiple jobs with different source/destination pairs, each with independent filter settings
 - **System/application folder filtering**: A unified set of auto-skipped system folders (e.g. `windows`, `appdata`, `cache`, `$recycle.bin`, `system volume information`, `temp`) is used for both directory-tree pruning during scanning and per-file path filtering during copying. The set is defined in `photo_organizer.py` and is currently non-configurable. A configurable filtering system for both CLI and GUI is on the roadmap
+
+---
+
+## 📤 Immich Integration Setup
+
+SnapSort can upload organized photos directly to your [Immich](https://immich.app/) server using [immich-go](https://github.com/simulot/immich-go). This turns SnapSort into a complete pipeline: **scan → filter → dedup → organize → upload to Immich**.
+
+### Prerequisites
+
+- A running Immich instance
+- An Immich API key (generate at Immich → Account Settings → API Keys)
+- `immich-go` installed (bundled in the Docker image; for local development, [install it separately](https://github.com/simulot/immich-go/releases))
+
+### Configuration
+
+1. Go to **Settings → Immich** in the SnapSort web UI
+2. Enable the integration and enter your Immich **Server URL** and **API Key**
+3. Click **Test Connection** to verify connectivity
+4. Configure upload preferences:
+   - **Auto-upload**: Automatically upload after every job completes
+   - **Album mode**: Choose how photos are organized in Immich (no album, job name, or folder-as-album)
+   - **Dry run**: Test without uploading
+   - **Upload notifications**: Get alerts via ntfy/browser when uploads complete
+
+### Usage
+
+- **Manual upload**: After a job completes, click the **Immich** button in the Actions column on the Jobs page
+- **Auto-upload**: Enable in Settings → Immich; uploads start automatically after each job finishes
+- **Monitor progress**: The Jobs page shows real-time upload stats (uploaded, duplicates, errors)
+
+### Docker Networking
+
+If Immich and SnapSort run on the same Docker host, use the Immich container's hostname for the server URL instead of `localhost`:
+
+```
+http://immich-server:2283
+```
+
+If using a separate Docker network, connect both containers to the same network or use the host's IP address.
 
 ---
 

@@ -19,7 +19,20 @@ RUN npm ci --omit=dev || npm install --omit=dev
 # ---- Stage 3: Final runtime image ----
 FROM node:20-alpine
 
-RUN apk add --no-cache python3 py3-pip exiftool
+RUN apk add --no-cache python3 py3-pip exiftool curl
+
+# Install immich-go (architecture-aware)
+ARG IMMICH_GO_VERSION=0.24.2
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+      x86_64)  GOARCH="amd64" ;; \
+      aarch64) GOARCH="arm64" ;; \
+      armv7l)  GOARCH="arm" ;; \
+      *)       echo "Unsupported arch: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/simulot/immich-go/releases/download/${IMMICH_GO_VERSION}/immich-go_Linux_${GOARCH}.tar.gz" \
+      | tar xz -C /usr/local/bin immich-go && \
+    chmod +x /usr/local/bin/immich-go
 
 # Python dependencies
 WORKDIR /app
