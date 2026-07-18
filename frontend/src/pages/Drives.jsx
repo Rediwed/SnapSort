@@ -4,16 +4,7 @@ import FilePicker from '../components/FilePicker';
 import { fetchDrives, prescanDrive, fetchPrescanResult, createJob, startJob, updateSettings } from '../api';
 import { Usb, Zap, HardDrive, Disc, Container, RefreshCw, BarChart3, Search, Camera, Package, FileText, Folder, AlertTriangle, XCircle, Play, EyeOff, Eye } from 'lucide-react';
 import { useSettings } from '../SettingsContext';
-
-function formatBytes(bytes) {
-  if (!bytes && bytes !== 0) return '—';
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  let val = bytes;
-  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
-  return `${val.toFixed(i ? 1 : 0)} ${units[i]}`;
-}
+import { formatBytes } from '../display';
 
 const typeIcons = {
   usb: <Usb size={18} />,
@@ -369,7 +360,7 @@ export default function Drives() {
                   <div className="flex gap-8" style={{ flex: 1 }}>
                     <input
                       className="form-input mono"
-                      placeholder="/mnt/photos/organized"
+                      placeholder="/mnt/destination"
                       value={destDir}
                       onChange={(e) => setDestDir(e.target.value)}
                       style={{ flex: 1 }}

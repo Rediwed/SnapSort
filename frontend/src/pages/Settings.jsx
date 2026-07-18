@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchSettings, fetchSystemInfo, updateSettings, fetchProfiles, updateProfile, createProfile, deleteProfile, sendNtfyTest, sendBrowserNotifyTest } from '../api';
 import { Check, Bell, Monitor, Send, Save, Undo2, Plus, Trash2, Copy, Settings as SettingsIcon } from 'lucide-react';
 import PillTabs from '../components/PillTabs';
-import Modal from '../components/Modal';
+import NtfyConfigModal from '../components/NtfyConfigModal';
 import InfoTip from '../components/InfoTip';
 import { fmtDate, fmtDateTime } from '../dateFormat';
 import { useSettings } from '../SettingsContext';
@@ -890,94 +890,14 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* ── ntfy.sh Configuration Modal ──────────────────── */}
-        <Modal open={ntfyConfigOpen} title="ntfy.sh Configuration" onClose={() => setNtfyConfigOpen(false)}>
-          <div className="form-group">
-            <label>Server URL</label>
-            <input
-              className="form-input mono"
-              type="text"
-              placeholder="https://ntfy.sh"
-              value={values.ntfy_server || ''}
-              onChange={(e) => handleChange('ntfy_server', e.target.value)}
-            />
-            <p className="form-hint">Default: https://ntfy.sh — or your self-hosted server URL.</p>
-          </div>
-
-          <div className="form-group">
-            <label>Topic</label>
-            <input
-              className="form-input mono"
-              type="text"
-              placeholder="snapsort"
-              value={values.ntfy_topic || ''}
-              onChange={(e) => handleChange('ntfy_topic', e.target.value)}
-            />
-            <p className="form-hint">The ntfy topic your device subscribes to. Keep it unique and hard to guess.</p>
-          </div>
-
-          <div className="form-group">
-            <label>Authentication</label>
-            <select
-              className="form-select"
-              value={values.ntfy_auth_type || 'none'}
-              onChange={(e) => handleChange('ntfy_auth_type', e.target.value)}
-            >
-              <option value="none">None</option>
-              <option value="token">Access Token</option>
-              <option value="basic">Username &amp; Password</option>
-            </select>
-          </div>
-
-          {values.ntfy_auth_type === 'token' && (
-            <div className="form-group">
-              <label>Access Token</label>
-              <div className="flex gap-8">
-                <input
-                  className="form-input mono"
-                  type="password"
-                  placeholder={values.ntfy_auth_token_configured ? 'Configured — enter a replacement' : ''}
-                  value={values.ntfy_auth_token || ''}
-                  onChange={(e) => handleSecretChange('ntfy_auth_token', e.target.value)}
-                />
-                {values.ntfy_auth_token_configured && (
-                  <button className="btn" onClick={() => handleSecretClear('ntfy_auth_token')}>Clear</button>
-                )}
-              </div>
-              <p className="form-hint">Saved tokens are never returned to the browser.</p>
-            </div>
-          )}
-
-          {values.ntfy_auth_type === 'basic' && (
-            <>
-              <div className="form-group">
-                <label>Username</label>
-                <input
-                  className="form-input mono"
-                  type="text"
-                  value={values.ntfy_username || ''}
-                  onChange={(e) => handleChange('ntfy_username', e.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label>Password</label>
-                <div className="flex gap-8">
-                  <input
-                    className="form-input mono"
-                    type="password"
-                    placeholder={values.ntfy_password_configured ? 'Configured — enter a replacement' : ''}
-                    value={values.ntfy_password || ''}
-                    onChange={(e) => handleSecretChange('ntfy_password', e.target.value)}
-                  />
-                  {values.ntfy_password_configured && (
-                    <button className="btn" onClick={() => handleSecretClear('ntfy_password')}>Clear</button>
-                  )}
-                </div>
-                <p className="form-hint">Saved passwords are never returned to the browser.</p>
-              </div>
-            </>
-          )}
-        </Modal>
+        <NtfyConfigModal
+          open={ntfyConfigOpen}
+          onClose={() => setNtfyConfigOpen(false)}
+          values={values}
+          onChange={handleChange}
+          onSecretChange={handleSecretChange}
+          onSecretClear={handleSecretClear}
+        />
         </div>{/* end settings-cards-grid */}
         </>}
 

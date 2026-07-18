@@ -97,7 +97,7 @@ router.get('/roots', (_req, res) => {
   /* Add common mount points */
   const mounts = [
     '/mnt', '/media', '/Volumes',           // Linux & macOS
-    '/mnt/photos/source', '/mnt/photos/dest', // Docker volumes
+    '/mnt/source', '/mnt/destination',          // Hardened Docker volumes
     '/mnt/disks',                             // Unraid: unassigned devices
     '/mnt/user',                              // Unraid: user shares
   ];
@@ -109,7 +109,7 @@ router.get('/roots', (_req, res) => {
                       mp === '/mnt/disks'        ? 'Disks'   :
                       mp === '/mnt/user'         ? 'Shares'  :
                       mp.startsWith('/media')  ? 'Media'   :
-                      mp.startsWith('/mnt/photos') ? mp.split('/').pop() : 'Mount';
+                      ['/mnt/source', '/mnt/destination'].includes(mp) ? mp.split('/').pop() : 'Mount';
         roots.push({ name: label, path: mp, icon: 'drive' });
       }
     } catch { /* skip */ }

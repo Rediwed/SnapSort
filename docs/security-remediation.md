@@ -48,9 +48,9 @@ Status meanings:
 |---|---|---|---|
 | CA-18 | Compose image tag is stale (`1.1.0` vs `1.2.1`) | Done | Compose and Unraid now default to `1.2.1`; Compose supports an explicit `SNAPSORT_VERSION` override. |
 | CA-19 | Immich risk was active, not dead code | Done | The full integration, auto-upload, binary, UI, routes, and stored credentials were removed coherently. |
-| CA-20 | No tests, CI, changelog, or release workflow | Partial | Node/Python regression suites and root `npm test` now exist. Add CI and initialize the standard release workflow separately. |
-| CA-21 | Keyboard and screen-reader accessibility gaps | Pending | Fix dialogs, tabs, clickable rows, sorting, selection, tooltips, and labels. |
-| CA-22 | Giant frontend components, duplicated utilities, exposed secret state | Partial | Immich state was removed and ntfy secrets are write-only, explicitly clearable, and removed from React state after save. Split components and shared frontend primitives remain. |
+| CA-20 | No tests, CI, changelog, or release workflow | Done | Root test orchestration, backend/frontend/Python suites, container CI, changelog, release/deploy scripts, and repository workflow instructions are present. |
+| CA-21 | Keyboard and screen-reader accessibility gaps | Done | Dialogs trap/restore focus and close on Escape; tabs, table rows, sorting, duplicate selection, tooltips, filename actions, close buttons, and key job labels are semantic and keyboard accessible. |
+| CA-22 | Giant frontend components, duplicated utilities, exposed secret state | Done | Secrets are write-only and cleared from state; display utilities are shared; ntfy configuration and duplicate comparison are extracted into focused components. |
 | CA-23 | Override counters drift for mixed skipped/scanned selections | Done | Successful rows transition transactionally from their actual prior status; skipped/scanned/copy/error counters are exact and failed photos retain their status. |
 | CA-24 | Immich duplicate parser and upload timeout defects | Done | Removed with the Immich integration. |
 

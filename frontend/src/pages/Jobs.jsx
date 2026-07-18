@@ -6,8 +6,7 @@ import Modal from '../components/Modal';
 import FilePicker from '../components/FilePicker';
 import { fetchJobs, createJob, startJob, retryJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles, fetchSettings } from '../api';
 import { FlaskConical, Zap, RefreshCw, Disc, Trash2, AlertTriangle } from 'lucide-react';
-
-const statusVariant = { pending: 'orange', running: 'accent', overriding: 'cyan', done: 'green', error: 'red', cancelled: 'orange' };
+import { JOB_STATUS_VARIANTS } from '../display';
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
@@ -116,7 +115,7 @@ export default function Jobs() {
     }},
     { key: 'status', header: 'Status', className: 'col-job-status', render: (r) => (
       <div>
-        <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge>
+        <Badge variant={JOB_STATUS_VARIANTS[r.status] || 'accent'}>{r.status}</Badge>
         {r.status === 'error' && r.error_message && (
           <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4, maxWidth: 260, lineHeight: 1.3 }}>{r.error_message}</div>
         )}
@@ -179,27 +178,27 @@ export default function Jobs() {
         }
       >
         <div className="form-group">
-          <label>Job Name</label>
-          <input className="form-input" placeholder="e.g. Holiday Photos 2024" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <label htmlFor="job-name">Job Name</label>
+          <input id="job-name" className="form-input" placeholder="e.g. Holiday Photos 2024" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <p className="form-hint">Optional — helps identify the job later.</p>
         </div>
         <div className="form-group">
-          <label>Source Directory</label>
+          <label htmlFor="job-source">Source Directory</label>
           <div className="flex gap-8">
-            <input className="form-input mono" placeholder="/mnt/photos/source" value={form.sourceDir} onChange={(e) => setForm({ ...form, sourceDir: e.target.value })} />
+            <input id="job-source" className="form-input mono" placeholder="/mnt/source" value={form.sourceDir} onChange={(e) => setForm({ ...form, sourceDir: e.target.value })} />
             <button className="btn" onClick={() => setPicker({ open: true, field: 'sourceDir' })}>Browse…</button>
           </div>
         </div>
         <div className="form-group">
-          <label>Destination Directory</label>
+          <label htmlFor="job-destination">Destination Directory</label>
           <div className="flex gap-8">
-            <input className="form-input mono" placeholder="/mnt/photos/organized" value={form.destDir} onChange={(e) => setForm({ ...form, destDir: e.target.value })} />
+            <input id="job-destination" className="form-input mono" placeholder="/mnt/destination" value={form.destDir} onChange={(e) => setForm({ ...form, destDir: e.target.value })} />
             <button className="btn" onClick={() => setPicker({ open: true, field: 'destDir' })}>Browse…</button>
           </div>
         </div>
         <div className="form-group">
-          <label>Mode</label>
-          <select className="form-select" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
+          <label htmlFor="job-mode">Mode</label>
+          <select id="job-mode" className="form-select" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
             <option value="normal">Normal — scan & copy all</option>
             <option value="scan">Scan only — preview without copying</option>
           </select>
@@ -208,8 +207,8 @@ export default function Jobs() {
           )}
         </div>
         <div className="form-group">
-          <label>Performance Profile</label>
-          <select className="form-select" value={form.performanceProfile} onChange={(e) => setForm({ ...form, performanceProfile: e.target.value })}>
+          <label htmlFor="job-profile">Performance Profile</label>
+          <select id="job-profile" className="form-select" value={form.performanceProfile} onChange={(e) => setForm({ ...form, performanceProfile: e.target.value })}>
             <option value="">Settings page defaults</option>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
@@ -245,16 +244,16 @@ export default function Jobs() {
         </div>
         <div className="jobs-min-filters">
           <div className="form-group" style={{ flex: 1 }}>
-            <label>Min Width (px)</label>
-            <input className="form-input mono" type="number" value={form.minWidth} onChange={(e) => setForm({ ...form, minWidth: Number(e.target.value) })} />
+            <label htmlFor="job-min-width">Min Width (px)</label>
+            <input id="job-min-width" className="form-input mono" type="number" min="0" max="100000" value={form.minWidth} onChange={(e) => setForm({ ...form, minWidth: Number(e.target.value) })} />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label>Min Height (px)</label>
-            <input className="form-input mono" type="number" value={form.minHeight} onChange={(e) => setForm({ ...form, minHeight: Number(e.target.value) })} />
+            <label htmlFor="job-min-height">Min Height (px)</label>
+            <input id="job-min-height" className="form-input mono" type="number" min="0" max="100000" value={form.minHeight} onChange={(e) => setForm({ ...form, minHeight: Number(e.target.value) })} />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label>Min File Size (bytes)</label>
-            <input className="form-input mono" type="number" value={form.minFilesize} onChange={(e) => setForm({ ...form, minFilesize: Number(e.target.value) })} />
+            <label htmlFor="job-min-size">Min File Size (bytes)</label>
+            <input id="job-min-size" className="form-input mono" type="number" min="0" value={form.minFilesize} onChange={(e) => setForm({ ...form, minFilesize: Number(e.target.value) })} />
           </div>
         </div>
       </Modal>

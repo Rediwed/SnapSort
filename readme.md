@@ -70,7 +70,7 @@ A full-stack web interface for managing photo organization visually:
 <p align="center">
   <img src="docs/screenshots/snapsort-jobs.png" width="680" alt="SnapSort Jobs">
 </p>
-- **Photos** — browse all processed photos with status filtering (copied/skipped/error/duplicate), regex search, skip reasons, dimensions, date taken, hover image previews, a **photo detail modal** with full EXIF metadata viewer, and an integrated **Duplicates** tab for reviewing flagged duplicate pairs with side-by-side comparison, metadata diffs, and per-duplicate resolution actions
+- **Photos** — browse all processed photos with status filtering (copied/skipped/error/duplicate), literal filename search, skip reasons, dimensions, date taken, hover image previews, a **photo detail modal** with full EXIF metadata viewer, and an integrated **Duplicates** tab for reviewing flagged duplicate pairs with side-by-side comparison, metadata diffs, and per-duplicate resolution actions
 - **Benchmarks** — test real storage I/O on your source & destination folders, identify the bottleneck, and get a recommended performance profile (see below)
 - **Settings** — tabbed layout (General, Filters & Formats, Performance, Notifications) with inline performance profile editing, creation, and deletion; ntfy.sh and browser notification configuration; configurable date/time display formats and theme selection
 - **Diagnostics** — system info, Python/Node.js versions, mounted drives, CPU & memory usage with sparkline charts, and a live SSE log stream with regex filtering (togglable from Settings)

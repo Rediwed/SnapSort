@@ -5,12 +5,10 @@ import { fmtDate, fmtDateTime } from '../dateFormat';
 import Badge from '../components/Badge';
 import PillTabs from '../components/PillTabs';
 import PhotoDetailModal from '../components/PhotoDetailModal';
+import DuplicateCard, { resolutionLabel } from '../components/DuplicateCard';
 import { fetchPhotos, fetchPhotoJobs, photoPreviewUrl, overridePhotos, resolveDuplicate } from '../api';
-import { CircleCheck, Inbox, Info, Download, Folder, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-
-const statusVariant = { copied: 'green', skipped: 'orange', error: 'red', pending: 'accent', duplicate: 'red', scanned: 'cyan' };
-const resolutionVariant = { keep_overwrite: 'green', keep_rename: 'cyan', ignore: 'red', undecided: 'orange' };
-const resolutionLabel = { keep_overwrite: 'overwrite', keep_rename: 'keep both', ignore: 'skip', undecided: 'undecided' };
+import { CircleCheck, Inbox, Info, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { PHOTO_STATUS_VARIANTS } from '../display';
 
 const tabs = [
   { value: 'copied',    label: 'Copied' },
@@ -29,12 +27,6 @@ const resolutionTabs = [
 ];
 
 const tabLabels = { copied: 'copied', skipped: 'skipped', scanned: 'scanned', duplicate: 'duplicate', error: 'error' };
-
-const fmtPath = (p) => {
-  if (!p) return '—';
-  const parts = p.split('/');
-  return parts.length > 3 ? '…/' + parts.slice(-3).join('/') : p;
-};
 
 const fmtSize = (s) => {
   if (!s) return '—';
@@ -55,15 +47,6 @@ const baseColumns = [
   { key: 'processed_at', label: 'Processed' },
 ];
 
-/* Duplicate comparison fields shown side by side */
-const compareFields = [
-  { key: 'file_size',  matchKey: 'match_file_size',  label: 'Size',       fmt: fmtSize },
-  { key: 'width',      matchKey: 'match_width',      label: 'Width',      fmt: (v) => v ?? '—', unit: 'px' },
-  { key: 'height',     matchKey: 'match_height',     label: 'Height',     fmt: (v) => v ?? '—', unit: 'px' },
-  { key: 'dpi',        matchKey: 'match_dpi',        label: 'DPI',        fmt: (v) => v ?? '—' },
-  { key: 'date_taken', matchKey: 'match_date_taken', label: 'Date Taken', fmt: fmtDate },
-  { key: 'hash',       matchKey: 'match_hash',       label: 'Hash',       fmt: (v) => v ? v.slice(0, 12) + '…' : '—' },
-];
 
 /* Generate page number buttons with ellipsis for large ranges */
 function generatePageNumbers(current, total) {
@@ -131,17 +114,18 @@ export default function Photos() {
     const s = Number(searchParams.get('pageSize'));
     return [25, 50, 100, 200].includes(s) ? s : 50;
   });
-  const setPage = useCallback((v) => {
-    setPageRaw((prev) => {
-      const next = typeof v === 'function' ? v(prev) : v;
-      setSearchParams((sp) => {
-        const p = new URLSearchParams(sp);
-        if (next <= 1) p.delete('page'); else p.set('page', String(next));
-        return p;
-      }, { replace: true });
-      return next;
-    });
-  }, [setSearchParams]);
+  const setPage = useCallback((value) => setPageRaw(value), []);
+
+  useEffect(() => {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      if (page <= 1) nextParams.delete('page');
+      else nextParams.set('page', String(page));
+      if (pageSize === 50) nextParams.delete('pageSize');
+      else nextParams.set('pageSize', String(pageSize));
+      return nextParams;
+    }, { replace: true });
+  }, [page, pageSize, setSearchParams]);
 
   /* Sort state */
   const [sortCol, setSortCol] = useState(null);
@@ -173,11 +157,6 @@ export default function Photos() {
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => setSearch(val), 300);
   };
-
-  const isValidRegex = useMemo(() => {
-    if (!searchInput) return true;
-    try { new RegExp(searchInput); return true; } catch { return false; }
-  }, [searchInput]);
 
   /* Load job list for dropdown */
   useEffect(() => {
@@ -396,7 +375,7 @@ export default function Photos() {
             ))}
           </select>
           <PillTabs tabs={tabs} active={status} onChange={setStatus} />
-          <div className={`search-box${!isValidRegex ? ' invalid' : ''}`}>
+          <div className="search-box">
             <Search size={14} className="search-icon" />
             <input
               type="text"
@@ -452,140 +431,23 @@ export default function Photos() {
               <span className="shift-hint">Hold ⇧ Shift to range-select</span>
             </label>
 
-            {sortedPhotos.map((photo, idx) => {
-              const res = photo.dup_resolution || 'undecided';
-              const pct = (photo.similarity || 0).toFixed(1);
-              const simVariant = (photo.similarity || 0) >= 90 ? 'red' : (photo.similarity || 0) >= 70 ? 'orange' : 'accent';
-              const isSelected = selected.has(photo.id);
-              return (
-                <div key={photo.id} className={`dup-card${isSelected ? ' selected' : ''}`}>
-                  {/* Card header */}
-                  <div className="dup-card-header">
-                    <span className="dup-card-check" role="checkbox" aria-checked={isSelected} onClick={(e) => { e.stopPropagation(); toggleOne(photo.id, idx, e); }}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        tabIndex={-1}
-                        onChange={() => {}}
-                      />
-                    </span>
-                    <Badge variant={simVariant}>{pct}% similar</Badge>
-                    <Badge variant={resolutionVariant[res]}>{resolutionLabel[res] || res}</Badge>
-                    <div className="dup-card-actions">
-                      {res !== 'ignore' && (
-                        <button
-                          className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'ignore' ? ' confirming danger' : ' danger'}`}
-                          onClick={() => stageResolve(photo.dup_id, 'ignore')}
-                          title="Do not copy this file"
-                        >
-                          {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'ignore' ? 'Confirm?' : 'Skip'}
-                        </button>
-                      )}
-                      {res !== 'keep_overwrite' && (
-                        <button
-                          className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_overwrite' ? ' confirming' : ''}`}
-                          onClick={() => stageResolve(photo.dup_id, 'keep_overwrite')}
-                          title="Copy and replace the existing file"
-                        >
-                          {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_overwrite' ? 'Confirm?' : 'Overwrite'}
-                        </button>
-                      )}
-                      {res !== 'keep_rename' && (
-                        <button
-                          className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_rename' ? ' confirming' : ''}`}
-                          onClick={() => stageResolve(photo.dup_id, 'keep_rename')}
-                          title="Copy alongside with a renamed filename"
-                        >
-                          {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_rename' ? 'Confirm?' : 'Keep Both'}
-                        </button>
-                      )}
-                      {res !== 'undecided' && photo.dup_operation_status !== 'succeeded' && (
-                        <button
-                          className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'undecided' ? ' confirming' : ''}`}
-                          onClick={() => stageResolve(photo.dup_id, 'undecided')}
-                        >
-                          {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'undecided' ? 'Confirm?' : 'Reset'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Side-by-side comparison */}
-                  <div className="dup-compare">
-                    {/* ── Source (incoming) photo ── */}
-                    <div className="dup-side source">
-                      <div className="dup-side-label"><Download size={14} /> Source (incoming)</div>
-                      <div className="dup-side-file">
-                        <span
-                          className="filename-preview clickable"
-                          title={photo.filename}
-                          onClick={() => setDetailPhoto(photo)}
-                          onMouseEnter={(e) => handleMouseEnter(e, photo.id)}
-                          onMouseMove={handleMouseMove}
-                          onMouseLeave={handleMouseLeave}
-                        >
-                          {photo.filename}
-                        </span>
-                      </div>
-                      <div className="dup-side-path mono" title={photo.src_path}>{fmtPath(photo.src_path)}</div>
-                    </div>
-
-                    {/* ── Matched (existing/destination) photo ── */}
-                    <div className="dup-side match">
-                      <div className="dup-side-label"><Folder size={14} /> Already in library</div>
-                      <div className="dup-side-file">
-                        {photo.matched_photo_id ? (
-                          <span
-                            className="filename-preview clickable"
-                            title={photo.match_filename || ''}
-                            onClick={() => setDetailPhoto({ id: photo.matched_photo_id, filename: photo.match_filename || 'matched photo', dest_path: photo.match_dest_path, file_size: photo.match_file_size, width: photo.match_width, height: photo.match_height, date_taken: photo.match_date_taken, hash: photo.match_hash })}
-                            onMouseEnter={(e) => handleMouseEnter(e, photo.matched_photo_id)}
-                            onMouseMove={handleMouseMove}
-                            onMouseLeave={handleMouseLeave}
-                          >
-                            {photo.match_filename || 'matched photo'}
-                          </span>
-                        ) : (
-                          <span className="mono">{fmtPath(photo.dup_matched_path)}</span>
-                        )}
-                      </div>
-                      <div className="dup-side-path mono" title={photo.match_dest_path || photo.dup_matched_path}>
-                        {fmtPath(photo.match_dest_path || photo.dup_matched_path)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ── Metadata comparison grid ── */}
-                  <div className="dup-meta-grid">
-                    <div className="dup-meta-header">
-                      <span>Property</span>
-                      <span>Source</span>
-                      <span>Library</span>
-                      <span></span>
-                    </div>
-                    {compareFields.map((f) => {
-                      const srcVal = photo[f.key];
-                      const matchVal = photo[f.matchKey];
-                      const srcFmt = f.fmt(srcVal);
-                      const matchFmt = f.fmt(matchVal);
-                      const bothExist = srcVal != null && matchVal != null;
-                      const isMatch = bothExist && String(srcFmt) === String(matchFmt);
-                      const isMissing = srcVal == null && matchVal == null;
-                      return (
-                        <div key={f.key} className={`dup-meta-row${isMatch ? ' match' : isMissing ? '' : ' differ'}`}>
-                          <span className="dup-meta-label">{f.label}</span>
-                          <span className="dup-meta-val mono">{srcFmt}{f.unit && srcVal != null ? ` ${f.unit}` : ''}</span>
-                          <span className="dup-meta-val mono">{matchFmt}{f.unit && matchVal != null ? ` ${f.unit}` : ''}</span>
-                          <span className="dup-meta-icon">
-                            {isMissing ? '—' : isMatch ? '✓' : '✗'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+            {sortedPhotos.map((photo, index) => (
+              <DuplicateCard
+                key={photo.id}
+                photo={photo}
+                index={index}
+                selected={selected.has(photo.id)}
+                pendingResolve={pendingResolve}
+                onToggle={toggleOne}
+                onResolve={stageResolve}
+                onDetail={setDetailPhoto}
+                onPreviewEnter={handleMouseEnter}
+                onPreviewMove={handleMouseMove}
+                onPreviewLeave={handleMouseLeave}
+                formatSize={fmtSize}
+                formatDate={(value) => fmtDate(value, settings)}
+              />
+            ))}
           </div>
         ) : (
           /* ── Standard photo table ────────────────────────────── */
@@ -607,7 +469,15 @@ export default function Photos() {
                     <th
                       key={col.key}
                       className={`sortable-th col-${col.key}`}
+                      tabIndex={0}
+                      aria-sort={sortCol === col.key ? (sortAsc ? 'ascending' : 'descending') : 'none'}
                       onClick={() => handleSort(col.key)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleSort(col.key);
+                        }
+                      }}
                     >
                       {col.label}
                       <span className="sort-indicator">
@@ -632,7 +502,8 @@ export default function Photos() {
                         )}
                       </td>
                       <td className="truncate col-filename">
-                        <span
+                        <button
+                          type="button"
                           className="filename-preview clickable"
                           title={photo.filename}
                           onClick={() => setDetailPhoto(photo)}
@@ -641,11 +512,11 @@ export default function Photos() {
                           onMouseLeave={handleMouseLeave}
                         >
                           {photo.filename?.replace(/\.[^.]+$/, '') || photo.filename}
-                        </span>
+                        </button>
                         {photo.overridden_at && <Badge variant="cyan">overridden</Badge>}
                       </td>
                       <td className="mono col-extension">{photo.extension}</td>
-                      <td className="col-status"><Badge variant={statusVariant[photo.status] || 'accent'}>{photo.status}</Badge></td>
+                      <td className="col-status"><Badge variant={PHOTO_STATUS_VARIANTS[photo.status] || 'accent'}>{photo.status}</Badge></td>
                       {status !== 'copied' && <td className="truncate col-skip_reason">{photo.skip_reason || '—'}</td>}
                       <td className="mono col-file_size">{fmtSize(photo.file_size)}</td>
                       <td className="mono col-dimensions">{photo.width ? `${photo.width}×${photo.height}` : '—'}</td>

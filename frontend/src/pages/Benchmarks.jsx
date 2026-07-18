@@ -7,15 +7,7 @@ import { fetchBenchmarks, fetchBenchmark, startBenchmark, fetchProfiles, updateS
 import { Play, AlertTriangle, BookOpen, HardDrive, Cpu, Zap, RefreshCw, Disc } from 'lucide-react';
 import { useSettings } from '../SettingsContext';
 import { fmtDateTime } from '../dateFormat';
-
-function formatBytes(bytes) {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let i = 0;
-  let val = bytes;
-  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
-  return `${val.toFixed(i ? 1 : 0)} ${units[i]}`;
-}
+import { formatBytes } from '../display';
 
 /* Profile tier order (best → worst) for display sorting */
 const PROFILE_ORDER = ['nvme_gen4', 'nvme_gen3', 'sata_ssd', 'hdd_7200rpm', 'hdd_5400rpm', 'usb_external', 'default'];

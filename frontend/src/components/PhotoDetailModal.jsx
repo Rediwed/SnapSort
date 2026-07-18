@@ -5,8 +5,7 @@ import { ExternalLink, ChevronDown, ChevronRight, Copy, Check } from 'lucide-rea
 import Badge from './Badge';
 import { useSettings } from '../SettingsContext';
 import { fmtDate, fmtDateTime } from '../dateFormat';
-
-const statusVariant = { copied: 'green', skipped: 'orange', error: 'red', pending: 'accent', duplicate: 'red' };
+import { PHOTO_STATUS_VARIANTS } from '../display';
 
 /* EXIF fields to display, grouped and ordered */
 const exifGroups = [
@@ -147,7 +146,7 @@ export default function PhotoDetailModal({ photo, open, onClose }) {
             <table className="photo-detail-meta">
               <tbody>
                 <MetaRow label="Status" value={photo.status}>
-                  <Badge variant={statusVariant[photo.status] || 'accent'}>{photo.status}</Badge>
+                  <Badge variant={PHOTO_STATUS_VARIANTS[photo.status] || 'accent'}>{photo.status}</Badge>
                 </MetaRow>
                 {photo.skip_reason && (
                   <MetaRow label="Skip Reason" value={photo.skip_reason} />

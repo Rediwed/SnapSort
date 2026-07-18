@@ -5,23 +5,7 @@ import DataTable from '../components/DataTable';
 import { fetchDashboard } from '../api';
 import { useSettings } from '../SettingsContext';
 import { fmtDate } from '../dateFormat';
-
-function formatBytes(bytes) {
-  if (!bytes) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  let val = bytes;
-  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
-  return `${val.toFixed(i ? 1 : 0)} ${units[i]}`;
-}
-
-const statusVariant = {
-  pending: 'orange',
-  running: 'accent',
-  done: 'green',
-  error: 'red',
-  cancelled: 'orange',
-};
+import { formatBytes, JOB_STATUS_VARIANTS } from '../display';
 
 export default function Dashboard() {
   const settings = useSettings();
@@ -30,7 +14,7 @@ export default function Dashboard() {
   const recentColumns = [
     { key: 'name', header: 'Name', className: 'truncate', render: (r) => r.name || <span className="mono" style={{ opacity: 0.4 }}>{r.id.slice(0, 8)}</span> },
     { key: 'mode', header: 'Mode', render: (r) => <Badge variant="cyan">{r.mode}</Badge> },
-    { key: 'status', header: 'Status', render: (r) => <Badge variant={statusVariant[r.status] || 'accent'}>{r.status}</Badge> },
+    { key: 'status', header: 'Status', render: (r) => <Badge variant={JOB_STATUS_VARIANTS[r.status] || 'accent'}>{r.status}</Badge> },
     { key: 'processed', header: 'Processed', className: 'mono' },
     { key: 'copied', header: 'Copied', className: 'mono' },
     { key: 'created_at', header: 'Created', render: (r) => fmtDate(r.created_at, settings) },

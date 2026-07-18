@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId, useRef } from 'react';
 import { browseDirectory, fetchFilesystemRoots, fetchDrives } from '../api';
 import { Plug, Zap, Disc, Container, HardDrive, FolderOpen, File, ArrowUp, FolderSearch, Home } from 'lucide-react';
+import useDialogFocus from '../hooks/useDialogFocus';
 
 /**
  * Server-side file/folder picker.
@@ -13,6 +14,8 @@ import { Plug, Zap, Disc, Container, HardDrive, FolderOpen, File, ArrowUp, Folde
  *   selectMode – 'directory' (default) | 'file'
  */
 export default function FilePicker({ open, title = 'Select Directory', onSelect, onClose, selectMode = 'directory' }) {
+  const dialogRef = useRef(null);
+  const titleId = useId();
   const [currentDir, setCurrentDir] = useState(null);
   const [entries, setEntries] = useState([]);
   const [parentDir, setParentDir] = useState(null);
@@ -22,6 +25,7 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('browse'); // 'browse' | 'drives'
   const canHover = typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches;
+  useDialogFocus(open, dialogRef, onClose);
 
   /* Load filesystem roots + drives on mount */
   useEffect(() => {
@@ -66,11 +70,20 @@ export default function FilePicker({ open, title = 'Select Directory', onSelect,
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 680, minHeight: 480 }} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        style={{ maxWidth: 680, minHeight: 480 }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="modal-header">
-          <h3>{title}</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <h3 id={titleId}>{title}</h3>
+          <button type="button" className="modal-close" aria-label="Close dialog" onClick={onClose}>×</button>
         </div>
 
         {/* Tab bar */}

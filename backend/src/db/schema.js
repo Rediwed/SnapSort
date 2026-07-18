@@ -23,12 +23,6 @@ function initDb(dbPath) {
   db.pragma('synchronous = NORMAL');
   db.pragma('foreign_keys = ON');
 
-  /* Register REGEXP function for regex search support */
-  db.function('regexp', { deterministic: true }, (pattern, value) => {
-    if (pattern == null || value == null) return 0;
-    try { return new RegExp(pattern, 'i').test(value) ? 1 : 0; } catch { return 0; }
-  });
-
   /* ---- jobs ---- */
   db.exec(`
     CREATE TABLE IF NOT EXISTS jobs (

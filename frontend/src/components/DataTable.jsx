@@ -27,7 +27,19 @@ export default function DataTable({ columns, rows, emptyMessage = 'No data', onR
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={row.id || i} onClick={onRowClick ? () => onRowClick(row) : undefined} style={onRowClick ? { cursor: 'pointer' } : undefined}>
+            <tr
+              key={row.id || i}
+              role={onRowClick ? 'button' : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              onKeyDown={onRowClick ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onRowClick(row);
+                }
+              } : undefined}
+              style={onRowClick ? { cursor: 'pointer' } : undefined}
+            >
               {columns.map((col) => (
                 <td key={col.key} className={col.className || ''}>
                   {col.render ? col.render(row) : row[col.key]}

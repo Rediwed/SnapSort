@@ -11,7 +11,14 @@ export default function InfoTip({ text }) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
   }, [open]);
 
   return (
@@ -21,6 +28,7 @@ export default function InfoTip({ text }) {
         className="info-tip-trigger"
         onClick={() => setOpen((v) => !v)}
         aria-label="More info"
+        aria-expanded={open}
       >
         <Info size={14} />
       </button>

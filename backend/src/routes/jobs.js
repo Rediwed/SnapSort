@@ -162,7 +162,7 @@ router.post('/:id/start', (req, res) => {
     return res.status(400).json({
       error: `Source directory not found: ${job.source_dir}. `
         + 'If running in Docker, make sure the path matches the container mount '
-        + '(e.g. /mnt/photos/… not the host path /mnt/user/photos/…). '
+        + '(use /mnt/source and /mnt/destination, not host paths). '
         + 'Check your Docker volume mappings.',
     });
   }
