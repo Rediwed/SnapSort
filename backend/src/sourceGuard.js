@@ -52,6 +52,20 @@ function containsPath(parentPath, candidatePath) {
   );
 }
 
+function pathsOverlap(leftPath, rightPath) {
+  const canonicalLeft = canonicalizePath(leftPath);
+  const canonicalRight = canonicalizePath(rightPath);
+  return containsPath(canonicalLeft, canonicalRight)
+    || containsPath(canonicalRight, canonicalLeft);
+}
+
+function pathIsWithin(parentPath, candidatePath) {
+  return containsPath(
+    canonicalizePath(parentPath),
+    canonicalizePath(candidatePath),
+  );
+}
+
 /**
  * Collect every source directory that has ever been used in a job.
  * Returns a Set of resolved absolute paths.
@@ -88,4 +102,11 @@ function assertNotInSource(db, filePath) {
   }
 }
 
-module.exports = { canonicalizePath, isInSourceDir, assertNotInSource, getSourceDirs };
+module.exports = {
+  canonicalizePath,
+  pathIsWithin,
+  pathsOverlap,
+  isInSourceDir,
+  assertNotInSource,
+  getSourceDirs,
+};

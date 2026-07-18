@@ -14,8 +14,12 @@
 const { Router } = require('express');
 const path = require('path');
 const fs = require('fs');
-const { listDuplicates, countDuplicates, resolveDuplicate, getDuplicate, getJob, getPhoto, listJobs } = require('../db/dao');
+const {
+  listDuplicates, countDuplicates, recordDuplicateResolution,
+  getDuplicate, getJob, getPhoto, listJobs, markPhotoCopied,
+} = require('../db/dao');
 const { assertNotInSource } = require('../sourceGuard');
+const { installNewFile, replaceFileWithRollback } = require('../services/atomicFile');
 
 const router = Router();
 
@@ -57,67 +61,90 @@ router.patch('/:id', async (req, res) => {
 
   const dup = getDuplicate(req.db, req.params.id);
   if (!dup) return res.status(404).json({ error: 'duplicate not found' });
+  if (dup.operation_status === 'succeeded' && resolution !== dup.resolution) {
+    return res.status(409).json({
+      error: 'This file operation has already been applied and cannot be reset automatically',
+    });
+  }
 
   const job = getJob(req.db, dup.job_id);
   const srcFile = dup.src_path;         // in source dir — READ ONLY
   const matchedFile = dup.matched_path;  // in destination dir
 
-  try {
-    if (resolution === 'keep_overwrite' && srcFile && matchedFile) {
-      /* Copy source → matched destination path (overwrite) */
-      assertNotInSource(req.db, matchedFile);
-      if (!fs.existsSync(srcFile)) {
-        return res.status(409).json({ error: `Source file no longer exists: ${srcFile}` });
-      }
-      fs.mkdirSync(path.dirname(matchedFile), { recursive: true });
-      fs.copyFileSync(srcFile, matchedFile);
+  const photo = getPhoto(req.db, dup.photo_id);
+  if (!photo) return res.status(409).json({ error: 'Source photo record no longer exists' });
 
-      /* Update the photo record so the UI reflects the new state */
-      const photo = getPhoto(req.db, dup.photo_id);
-      if (photo) {
-        req.db.prepare('UPDATE photos SET status = ?, dest_path = ?, skip_reason = NULL, overridden_at = ? WHERE id = ?')
-          .run('copied', matchedFile, new Date().toISOString(), photo.id);
-      }
-    } else if (resolution === 'keep_rename' && srcFile) {
-      /* Copy source → destination with a unique filename alongside the match */
-      const destDir = job ? job.dest_dir : (matchedFile ? path.dirname(matchedFile) : null);
-      if (!destDir) {
-        return res.status(409).json({ error: 'Cannot determine destination directory' });
-      }
-      if (!fs.existsSync(srcFile)) {
-        return res.status(409).json({ error: `Source file no longer exists: ${srcFile}` });
-      }
-
-      /* Build a unique destination path next to the matched file */
-      const ext = path.extname(srcFile);
-      const base = path.basename(srcFile, ext);
-      const targetDir = matchedFile ? path.dirname(matchedFile) : destDir;
-      let destPath = path.join(targetDir, `${base}${ext}`);
-      let counter = 1;
-      while (fs.existsSync(destPath)) {
-        destPath = path.join(targetDir, `${base}_${counter}${ext}`);
-        counter++;
-      }
-
-      assertNotInSource(req.db, destPath);
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.copyFileSync(srcFile, destPath);
-
-      /* Update the photo record */
-      const photo = getPhoto(req.db, dup.photo_id);
-      if (photo) {
-        req.db.prepare('UPDATE photos SET status = ?, dest_path = ?, skip_reason = NULL, overridden_at = ? WHERE id = ?')
-          .run('copied', destPath, new Date().toISOString(), photo.id);
-      }
-    }
-    /* ignore / undecided — no file operation */
-  } catch (err) {
-    console.error(`[resolve ${req.params.id}] file operation failed:`, err.message);
-    return res.status(500).json({ error: err.message });
+  if (resolution === 'ignore' || resolution === 'undecided') {
+    recordDuplicateResolution(req.db, req.params.id, {
+      resolution,
+      status: 'decision_only',
+      appliedAt: resolution === 'ignore' ? new Date().toISOString() : null,
+    });
+    return res.json({ id: req.params.id, resolution, status: 'decision_only' });
   }
 
-  resolveDuplicate(req.db, req.params.id, resolution);
-  res.json({ id: req.params.id, resolution });
+  if (!srcFile || !fs.existsSync(srcFile)) {
+    return res.status(409).json({ error: `Source file no longer exists: ${srcFile}` });
+  }
+
+  let operation;
+  try {
+    if (resolution === 'keep_overwrite') {
+      if (!matchedFile || !fs.existsSync(matchedFile)) {
+        return res.status(409).json({ error: 'Matched destination file no longer exists' });
+      }
+      assertNotInSource(req.db, matchedFile);
+      operation = replaceFileWithRollback(srcFile, matchedFile);
+    } else {
+      const targetDirectory = matchedFile
+        ? path.dirname(matchedFile)
+        : job?.dest_dir;
+      if (!targetDirectory) {
+        return res.status(409).json({ error: 'Cannot determine destination directory' });
+      }
+      const requestedPath = path.join(targetDirectory, path.basename(srcFile));
+      assertNotInSource(req.db, requestedPath);
+      operation = installNewFile(srcFile, requestedPath);
+    }
+
+    const persist = req.db.transaction(() => {
+      markPhotoCopied(req.db, photo.id, {
+        destPath: operation.finalPath,
+        outputOwned: resolution === 'keep_rename',
+        outputOperation: resolution === 'keep_rename' ? 'keep_both' : 'overwrite',
+      });
+      recordDuplicateResolution(req.db, req.params.id, {
+        resolution,
+        status: 'succeeded',
+        appliedAt: new Date().toISOString(),
+      });
+    });
+
+    try {
+      persist();
+    } catch (error) {
+      operation.rollback();
+      throw error;
+    }
+    operation.commit();
+    return res.json({
+      id: req.params.id,
+      resolution,
+      status: 'succeeded',
+      destPath: operation.finalPath,
+    });
+  } catch (error) {
+    console.error(`[resolve ${req.params.id}] file operation failed:`, error.message);
+    try {
+      recordDuplicateResolution(req.db, req.params.id, {
+        resolution,
+        status: 'failed',
+        error: error.message,
+        appliedAt: new Date().toISOString(),
+      });
+    } catch { /* retain original failure */ }
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 module.exports = router;

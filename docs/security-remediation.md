@@ -16,7 +16,7 @@ Status meanings:
 |---|---|---|---|
 | CA-01 | Benchmark request fields execute as Python | Done | Replaced generated source with `benchmark_runner.py`, strict bounded JSON input, and injection regression tests. |
 | CA-04 | Unauthenticated admin/filesystem API, wildcard CORS, secret disclosure | Done | Production fails closed without Basic credentials, auth failures are throttled, CORS is removed, health alone is public, and ntfy secrets are write-only/masked. |
-| CA-03 | Source guards use the wrong scope and lexical paths | Partial | Canonical Node guards, benchmark protection, and read-only deployment mounts are covered. Still pass immutable `source_root` through Python, guard override writes, and prevent cross-job overlap. |
+| CA-03 | Source guards use the wrong scope and lexical paths | Done | Node and Python canonicalize aliases, every Python copy receives an immutable source root, override writes are guarded, cross-job overlaps are rejected, and deployment mounts sources read-only. |
 | CA-17 | Container and supply-chain hardening | Partial | Runtime is non-root with read-only root FS, dropped capabilities, `no-new-privileges`, PID limit, tmpfs, split mounts, healthcheck, and strict `npm ci`. Pin base/Python dependencies and add broader resource limits. |
 
 ## P1 - Data Integrity
@@ -24,11 +24,11 @@ Status meanings:
 | ID | Finding | Status | Current work / remaining work |
 |---|---|---|---|
 | CA-02 | Benchmark writes into and deletes under source | Done | Runner samples source read-only and uses a unique destination temp directory with `finally` cleanup. Source hash and destination cleanup are tested. |
-| CA-05 | Dedup and destination collision races | Pending | Add atomic match/reserve/register and shared destination locking across jobs. |
-| CA-06 | Final-path copies are non-atomic | Pending | Copy to temporary files, flush/verify, atomically replace, and clean partials. |
-| CA-07 | Configurable extensions and previews enable arbitrary reads | Pending | Enforce image allowlist/signatures, reject symlinks, and safely rasterize previews. |
+| CA-05 | Dedup and destination collision races | Done | Exact-content copy guards serialize match/copy/register, destination commits use filesystem locks, collision names are bounded, and overlapping active jobs are rejected. |
+| CA-06 | Final-path copies are non-atomic | Done | Python and Node copy to same-directory temp files, fsync and hash-verify, atomically install, clean partials, and compensate DB failures. |
+| CA-07 | Configurable extensions and previews enable arbitrary reads | Done | Preview/metadata paths are job-root confined regular files with fixed allowlists; previews are pixel-limited and re-encoded to JPEG with private cache, CSP, and `nosniff`. |
 | CA-08 | Benchmark methodology gives unreliable recommendations | Partial | Existing source samples, equal byte volumes, unique destination temp data, and pipeline throughput now participate. Add repeated runs, median/p95, and explicit cache-state labeling. |
-| CA-11 | Duplicate resolution lacks transactions/provenance and may delete pre-existing files | Pending | High priority: model provenance, make disk/DB/counter updates recoverable, and protect pre-existing paths from cleanup. |
+| CA-11 | Duplicate resolution lacks transactions/provenance and may delete pre-existing files | Done | Output ownership is explicit, legacy/overwrite paths default protected, file operations are verified with compensating rollback, outcomes are recorded, and cleanup deletes owned paths only. |
 
 ## P2 - Correctness and Hardening
 
@@ -51,7 +51,7 @@ Status meanings:
 | CA-20 | No tests, CI, changelog, or release workflow | Partial | Node/Python regression suites and root `npm test` now exist. Add CI and initialize the standard release workflow separately. |
 | CA-21 | Keyboard and screen-reader accessibility gaps | Pending | Fix dialogs, tabs, clickable rows, sorting, selection, tooltips, and labels. |
 | CA-22 | Giant frontend components, duplicated utilities, exposed secret state | Partial | Immich state was removed and ntfy secrets are write-only, explicitly clearable, and removed from React state after save. Split components and shared frontend primitives remain. |
-| CA-23 | Override counters drift for mixed skipped/scanned selections | Pending | Use exact transactional status deltas. |
+| CA-23 | Override counters drift for mixed skipped/scanned selections | Done | Successful rows transition transactionally from their actual prior status; skipped/scanned/copy/error counters are exact and failed photos retain their status. |
 | CA-24 | Immich duplicate parser and upload timeout defects | Done | Removed with the Immich integration. |
 
 ## Validation Baseline

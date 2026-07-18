@@ -42,7 +42,7 @@ function updateJobStatus(db, id, status, extra = {}) {
 
   for (const [key, value] of Object.entries(extra)) {
     /* Only allow known columns */
-    const allowed = ['processed', 'copied', 'skipped', 'errors', 'total_files', 'total_bytes', 'error_message', 'started_at', 'finished_at'];
+    const allowed = ['processed', 'copied', 'skipped', 'scanned', 'errors', 'total_files', 'total_bytes', 'error_message', 'started_at', 'finished_at'];
     if (allowed.includes(key)) {
       sets.push(`${key} = ?`);
       params.push(value);
@@ -59,14 +59,26 @@ function deleteJob(db, id) {
 
 function listPhotoPaths(db, jobId) {
   return db.prepare(
-    "SELECT dest_path FROM photos WHERE job_id = ? AND dest_path IS NOT NULL AND status = 'copied'"
+    "SELECT dest_path FROM photos WHERE job_id = ? AND dest_path IS NOT NULL AND status = 'copied' AND output_owned = 1"
   ).all(jobId).map((r) => r.dest_path);
+}
+
+function countProtectedPhotoPaths(db, jobId) {
+  return db.prepare(
+    "SELECT COUNT(*) AS count FROM photos WHERE job_id = ? AND dest_path IS NOT NULL AND status = 'copied' AND output_owned = 0"
+  ).get(jobId).count;
 }
 
 function listSourceDirs(db) {
   return db.prepare(
     'SELECT DISTINCT source_dir FROM jobs WHERE source_dir IS NOT NULL'
   ).all().map((row) => row.source_dir);
+}
+
+function listDestinationDirs(db) {
+  return db.prepare(
+    'SELECT DISTINCT dest_dir FROM jobs WHERE dest_dir IS NOT NULL'
+  ).all().map((row) => row.dest_dir);
 }
 
 /* ================================================================== */
@@ -76,15 +88,17 @@ function listSourceDirs(db) {
 function insertPhoto(db, photo) {
   const id = photo.id || uuidv4();
   db.prepare(`
-    INSERT INTO photos (id, job_id, src_path, dest_path, filename, extension, file_size, width, height, date_taken, status, skip_reason, hash, dpi, processed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO photos (id, job_id, src_path, dest_path, filename, extension, file_size, width, height, date_taken, status, skip_reason, hash, dpi, processed_at, output_owned, output_operation)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, photo.jobId, photo.srcPath, photo.destPath || null,
     photo.filename, photo.extension, photo.fileSize || 0,
     photo.width || null, photo.height || null, photo.dateTaken || null,
     photo.status || 'pending', photo.skipReason || null, photo.hash || null,
     photo.dpi || null,
-    new Date().toISOString()
+    new Date().toISOString(),
+    photo.outputOwned ? 1 : 0,
+    photo.outputOperation || null
   );
   return id;
 }
@@ -92,7 +106,9 @@ function insertPhoto(db, photo) {
 function listPhotos(db, { jobId, status, isDuplicate, resolution, search, limit = 100, offset = 0 } = {}) {
   let sql = `SELECT p.*,
       d.id AS dup_id, d.similarity, d.matched_path AS dup_matched_path,
-      d.matched_photo_id, d.resolution AS dup_resolution, d.src_path AS dup_src_path,
+      d.matched_photo_id, d.resolution AS dup_resolution,
+      d.operation_status AS dup_operation_status, d.applied_at AS dup_applied_at,
+      d.src_path AS dup_src_path,
       mp.filename   AS match_filename,
       mp.extension  AS match_extension,
       mp.width      AS match_width,
@@ -171,6 +187,14 @@ function listDuplicates(db, { jobId, resolution, limit = 100, offset = 0 } = {})
 
 function resolveDuplicate(db, id, resolution) {
   db.prepare('UPDATE duplicates SET resolution = ? WHERE id = ?').run(resolution, id);
+}
+
+function recordDuplicateResolution(db, id, { resolution, status, error = null, appliedAt = null }) {
+  db.prepare(`
+    UPDATE duplicates
+    SET resolution = ?, applied_at = ?, operation_status = ?, operation_error = ?
+    WHERE id = ?
+  `).run(resolution, appliedAt, status, error, id);
 }
 
 function getDuplicate(db, id) {
@@ -274,6 +298,38 @@ function updatePhotoOverride(db, id, { status, destPath, overriddenAt }) {
   `).run(status, destPath || null, overriddenAt, id);
 }
 
+function markPhotoCopied(db, id, {
+  destPath,
+  outputOwned,
+  outputOperation,
+  operationAt = new Date().toISOString(),
+}) {
+  const photo = getPhoto(db, id);
+  if (!photo) throw new Error(`Photo not found: ${id}`);
+
+  db.prepare(`
+    UPDATE photos
+    SET status = 'copied', dest_path = ?, skip_reason = NULL,
+        overridden_at = ?, output_owned = ?, output_operation = ?
+    WHERE id = ?
+  `).run(destPath, operationAt, outputOwned ? 1 : 0, outputOperation, id);
+
+  if (photo.status !== 'copied') {
+    const skippedDelta = photo.status === 'skipped' ? 1 : 0;
+    const scannedDelta = photo.status === 'scanned' ? 1 : 0;
+    const errorDelta = photo.status === 'error' ? 1 : 0;
+    db.prepare(`
+      UPDATE jobs
+      SET copied = copied + 1,
+          skipped = MAX(0, skipped - ?),
+          scanned = MAX(0, scanned - ?),
+          errors = MAX(0, errors - ?)
+      WHERE id = ?
+    `).run(skippedDelta, scannedDelta, errorDelta, photo.job_id);
+  }
+  return getPhoto(db, id);
+}
+
 /* ================================================================== */
 /*  DASHBOARD                                                          */
 /* ================================================================== */
@@ -304,10 +360,10 @@ function getDashboardStats(db) {
 }
 
 module.exports = {
-  createJob, getJob, listJobs, updateJobStatus, deleteJob, listSourceDirs,
-  insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths,
-  getPhotosByIds, updatePhotoOverride,
-  insertDuplicate, listDuplicates, resolveDuplicate, getDuplicate, countDuplicates,
+  createJob, getJob, listJobs, updateJobStatus, deleteJob, listSourceDirs, listDestinationDirs,
+  insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths, countProtectedPhotoPaths,
+  getPhotosByIds, updatePhotoOverride, markPhotoCopied,
+  insertDuplicate, listDuplicates, resolveDuplicate, recordDuplicateResolution, getDuplicate, countDuplicates,
   getAllSettings, getSetting, upsertSetting, bulkUpsertSettings,
   listProfiles, getProfile, createProfile, updateProfile, deleteProfile,
   getDashboardStats,

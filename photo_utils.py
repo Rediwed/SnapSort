@@ -6,6 +6,9 @@ Utility functions for photo metadata extraction and manipulation.
 
 import os
 import shutil
+import tempfile
+import threading
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional
 
@@ -13,6 +16,113 @@ import piexif
 from PIL import Image
 
 JPEG_TIFF_EXTENSIONS = (".jpg", ".jpeg", ".tif", ".tiff")
+COPY_CHUNK_SIZE = 1024 * 1024
+MAX_COLLISION_ATTEMPTS = 10000
+_destination_locks = {}
+_destination_locks_guard = threading.Lock()
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
+
+
+@contextmanager
+def destination_lock(directory):
+    """Serialize final-path selection and installation in one directory."""
+    from path_utils import canonicalize_path
+
+    canonical_directory = canonicalize_path(directory)
+    with _destination_locks_guard:
+        thread_lock = _destination_locks.setdefault(
+            canonical_directory, threading.Lock()
+        )
+
+    with thread_lock:
+        lock_path = os.path.join(canonical_directory, ".snapsort.lock")
+        with open(lock_path, "a+b") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _fsync_directory(directory):
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        directory_fd = os.open(directory, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _destination_candidates(dest_path, date_taken):
+    yield dest_path
+    base, ext = os.path.splitext(dest_path)
+    timestamp = date_taken.strftime("%Y%m%d_%H%M%S")
+    timestamped = f"{base}_{timestamp}{ext}"
+    yield timestamped
+    for counter in range(1, MAX_COLLISION_ATTEMPTS):
+        yield f"{base}_{timestamp}_{counter}{ext}"
+
+
+def copy_file_atomic(src_path, dest_path, date_taken, hash_func):
+    """Copy and verify a file before atomically installing a unique final path.
+
+    Returns ``(final_path, copied)``. ``copied`` is false when an identical
+    destination already exists.
+    """
+    src_path = os.fspath(src_path)
+    dest_path = os.fspath(dest_path)
+    destination_directory = os.path.dirname(dest_path)
+    os.makedirs(destination_directory, exist_ok=True)
+    temp_fd, temp_path = tempfile.mkstemp(
+        prefix=".snapsort-part-", suffix=".tmp", dir=destination_directory
+    )
+
+    try:
+        with open(src_path, "rb") as source_file, os.fdopen(temp_fd, "wb") as temp_file:
+            temp_fd = None
+            shutil.copyfileobj(source_file, temp_file, length=COPY_CHUNK_SIZE)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+
+        shutil.copystat(src_path, temp_path, follow_symlinks=False)
+        with open(temp_path, "rb") as temp_file:
+            os.fsync(temp_file.fileno())
+
+        if os.path.getsize(src_path) != os.path.getsize(temp_path):
+            raise OSError("Atomic copy verification failed: size mismatch")
+        source_hash = hash_func(src_path)
+        temp_hash = hash_func(temp_path)
+        if not source_hash or source_hash != temp_hash:
+            raise OSError("Atomic copy verification failed: hash mismatch")
+
+        with destination_lock(destination_directory):
+            for candidate in _destination_candidates(dest_path, date_taken):
+                if os.path.exists(candidate):
+                    candidate_hash = hash_func(candidate)
+                    if candidate_hash and candidate_hash == source_hash:
+                        return candidate, False
+                    continue
+
+                os.replace(temp_path, candidate)
+                temp_path = None
+                _fsync_directory(destination_directory)
+                return candidate, True
+
+        raise OSError("Unable to allocate a unique destination filename")
+    finally:
+        if temp_fd is not None:
+            os.close(temp_fd)
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 
 def get_exif_with_exiftool(filepath):
@@ -52,8 +162,8 @@ def extract_date_taken(src_path):
 
     if ext in JPEG_TIFF_EXTENSIONS:
         try:
-            img = Image.open(src_path)
-            exif_data = img.info.get("exif")
+            with Image.open(src_path) as img:
+                exif_data = img.info.get("exif")
             if exif_data:
                 try:
                     exif_dict = piexif.load(exif_data)
@@ -124,7 +234,7 @@ def _resolve_match_path(dedup_match):
     )
 
 
-def copy_photo_with_metadata(
+def _copy_photo_with_metadata_impl(
     src_path,
     dest_dir,
     min_width,
@@ -139,6 +249,7 @@ def copy_photo_with_metadata(
     force_copy=False,
     dedup_index=None,
     copy_semaphore=None,
+    source_root=None,
 ):
     """Copy a photo to the destination directory with metadata extraction and renaming.
 
@@ -150,22 +261,22 @@ def copy_photo_with_metadata(
     height = None
 
     # ── Source-safety check: source and destination must be completely disjoint ──
-    _src_dir = os.path.dirname(os.path.abspath(src_path))
-    _dest_resolved = os.path.abspath(dest_dir)
-    if _dest_resolved == _src_dir:
+    from path_utils import canonicalize_path, path_is_within, paths_overlap
+
+    canonical_source_root = canonicalize_path(
+        source_root or os.path.dirname(src_path)
+    )
+    canonical_source_path = canonicalize_path(src_path)
+    canonical_dest_dir = canonicalize_path(dest_dir)
+    if not path_is_within(canonical_source_root, canonical_source_path):
         raise RuntimeError(
-            f"SOURCE SAFETY VIOLATION: destination '{dest_dir}' is the same as "
-            f"source directory '{_src_dir}'. SnapSort never writes to source directories."
+            f"SOURCE SAFETY VIOLATION: file '{src_path}' is outside configured "
+            f"source root '{canonical_source_root}'."
         )
-    if _dest_resolved.startswith(_src_dir + os.sep):
+    if paths_overlap(canonical_source_root, canonical_dest_dir):
         raise RuntimeError(
-            f"SOURCE SAFETY VIOLATION: destination '{dest_dir}' is inside source "
-            f"directory '{_src_dir}'. SnapSort never writes to source directories."
-        )
-    if _src_dir.startswith(_dest_resolved + os.sep):
-        raise RuntimeError(
-            f"SOURCE SAFETY VIOLATION: source directory '{_src_dir}' is inside "
-            f"destination '{dest_dir}'. This would cause re-processing of output."
+            f"SOURCE SAFETY VIOLATION: source '{canonical_source_root}' and "
+            f"destination '{canonical_dest_dir}' overlap."
         )
 
     if not force_copy:
@@ -309,18 +420,21 @@ def copy_photo_with_metadata(
                         match_path or "",
                     )
 
-    # ── Step 2: File-exists safety net ──────────────────────────────
-    # If an identical file already sits at the destination path, skip
-    # the copy but still record the event in the dedup index so the
-    # Duplicates page reflects it.
-    if os.path.exists(dest_path):
-        src_hash = file_hash_func(src_path)
-        dest_hash = file_hash_func(dest_path)
-        if src_hash and dest_hash and src_hash == dest_hash:
+    try:
+        if copy_semaphore:
+            copy_semaphore.acquire()
+        try:
+            dest_path, copied = copy_file_atomic(
+                src_path, dest_path, date_taken, file_hash_func
+            )
+        finally:
+            if copy_semaphore:
+                copy_semaphore.release()
+
+        if not copied:
             log_message_func(f"Skipped (already exists, identical): {src_path}")
             if enable_csv_log:
                 log_csv_func("skipped", "already exists, identical", src_path, dest_path)
-            # Record in dedup index so Duplicates page shows it
             if dedup_index and dedup_record:
                 dedup_record["status"] = "skipped_duplicate"
                 dedup_record["similarity"] = 100.0
@@ -328,19 +442,7 @@ def copy_photo_with_metadata(
                 dedup_record["final_path"] = dest_path
                 dedup_index.add_record(dedup_record)
             return "skipped", dest_path
-        base, ext = os.path.splitext(os.path.basename(dest_path))
-        timestamp = date_taken.strftime("%Y%m%d_%H%M%S")
-        dest_path = os.path.join(os.path.dirname(dest_path), f"{base}_{timestamp}{ext}")
 
-    try:
-        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-        if copy_semaphore:
-            copy_semaphore.acquire()
-        try:
-            shutil.copy2(src_path, dest_path)
-        finally:
-            if copy_semaphore:
-                copy_semaphore.release()
         file_size = os.path.getsize(dest_path)
         log_message_func(f"Copied: {src_path} -> {dest_path}")
         if enable_csv_log:
@@ -359,3 +461,59 @@ def copy_photo_with_metadata(
             dedup_record["final_path"] = dest_path
             dedup_index.add_record(dedup_record)
         return "error", None
+
+
+def copy_photo_with_metadata(
+    src_path,
+    dest_dir,
+    min_width,
+    min_height,
+    min_file_size,
+    supported_exts,
+    system_folders,
+    enable_csv_log,
+    file_hash_func,
+    log_csv_func,
+    log_message_func,
+    force_copy=False,
+    dedup_index=None,
+    copy_semaphore=None,
+    source_root=None,
+):
+    """Run match, copy, and index registration under an exact-content guard."""
+    if dedup_index is None:
+        return _copy_photo_with_metadata_impl(
+            src_path,
+            dest_dir,
+            min_width,
+            min_height,
+            min_file_size,
+            supported_exts,
+            system_folders,
+            enable_csv_log,
+            file_hash_func,
+            log_csv_func,
+            log_message_func,
+            force_copy=force_copy,
+            copy_semaphore=copy_semaphore,
+            source_root=source_root,
+        )
+
+    with dedup_index.copy_guard(src_path):
+        return _copy_photo_with_metadata_impl(
+            src_path,
+            dest_dir,
+            min_width,
+            min_height,
+            min_file_size,
+            supported_exts,
+            system_folders,
+            enable_csv_log,
+            file_hash_func,
+            log_csv_func,
+            log_message_func,
+            force_copy=force_copy,
+            dedup_index=dedup_index,
+            copy_semaphore=copy_semaphore,
+            source_root=source_root,
+        )

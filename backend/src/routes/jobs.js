@@ -7,13 +7,20 @@ const fs = require('fs');
 const path = require('path');
 const {
   createJob, getJob, listJobs, updateJobStatus, deleteJob,
-  getPhotosByIds, updatePhotoOverride,
+  countProtectedPhotoPaths, getPhotosByIds, listPhotoPaths, markPhotoCopied,
 } = require('../db/dao');
 const { startJob, cancelJob, getActiveJobIds, getCurrentFile } = require('../services/pythonBridge');
 const { assertNotInSource } = require('../sourceGuard');
 const { notifyJobCancelled } = require('../services/ntfyService');
+const {
+  JobPathError,
+  assertNoActiveJobConflict,
+  validateNewJobPaths,
+} = require('../services/jobPathSafety');
+const { installNewFile } = require('../services/atomicFile');
 
 const router = Router();
+const overrideLocks = new Set();
 
 /* List jobs (optional ?status=running&limit=20&offset=0) */
 router.get('/', (req, res) => {
@@ -99,19 +106,25 @@ router.post('/', (req, res) => {
   if (!sourceDir || !destDir) {
     return res.status(400).json({ error: 'sourceDir and destDir are required' });
   }
-  /* Source safety: source and destination must be completely disjoint */
-  const resolvedSrc = path.resolve(sourceDir);
-  const resolvedDst = path.resolve(destDir);
-  if (resolvedDst === resolvedSrc) {
-    return res.status(400).json({ error: 'Source and destination cannot be the same directory.' });
+  let safePaths;
+  try {
+    safePaths = validateNewJobPaths(req.db, sourceDir, destDir);
+  } catch (error) {
+    if (error instanceof JobPathError) {
+      return res.status(400).json({ error: error.message });
+    }
+    throw error;
   }
-  if (resolvedDst.startsWith(resolvedSrc + path.sep)) {
-    return res.status(400).json({ error: 'Destination must not be inside the source directory. SnapSort never modifies source files.' });
-  }
-  if (resolvedSrc.startsWith(resolvedDst + path.sep)) {
-    return res.status(400).json({ error: 'Source must not be inside the destination directory — this would cause SnapSort to re-process its own output.' });
-  }
-  const job = createJob(req.db, { name, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile });
+  const job = createJob(req.db, {
+    name,
+    sourceDir: safePaths.sourcePath,
+    destDir: safePaths.destinationPath,
+    mode,
+    minWidth,
+    minHeight,
+    minFilesize,
+    performanceProfile,
+  });
   res.status(201).json(job);
 });
 
@@ -129,6 +142,15 @@ router.post('/:id/start', (req, res) => {
         + '(e.g. /mnt/photos/… not the host path /mnt/user/photos/…). '
         + 'Check your Docker volume mappings.',
     });
+  }
+
+  try {
+    assertNoActiveJobConflict(req.db, job, getActiveJobIds());
+  } catch (error) {
+    if (error instanceof JobPathError) {
+      return res.status(409).json({ error: error.message });
+    }
+    throw error;
   }
 
   startJob(req.db, job);
@@ -158,28 +180,41 @@ router.delete('/:id', (req, res) => {
 
 /* Delete a job AND remove copied files from disk */
 router.delete('/:id/photos', (req, res) => {
-  const fs = require('fs');
-  const { listPhotoPaths } = require('../db/dao');
   const job = getJob(req.db, req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
   const paths = listPhotoPaths(req.db, req.params.id);
+  const protectedCount = countProtectedPhotoPaths(req.db, req.params.id);
   let deleted = 0;
   let failed = 0;
+  const results = [];
   for (const p of paths) {
     try {
       /* Source safety: refuse to delete anything inside a source dir */
       assertNotInSource(req.db, p);
-      if (fs.existsSync(p)) { fs.unlinkSync(p); deleted++; }
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+        deleted++;
+        results.push({ path: p, status: 'deleted' });
+      } else {
+        results.push({ path: p, status: 'already-missing' });
+      }
     } catch (err) {
       if (err.message.includes('SOURCE SAFETY')) {
         console.error(err.message);
       }
       failed++;
+      results.push({ path: p, status: 'failed', error: err.message });
     }
   }
+  if (failed > 0) {
+    return res.status(409).json({
+      deleted, failed, protected: protectedCount, total: paths.length, results,
+      error: 'Some owned files could not be deleted; the job record was retained for retry',
+    });
+  }
   deleteJob(req.db, req.params.id);
-  res.json({ deleted, failed, total: paths.length });
+  res.json({ deleted, failed, protected: protectedCount, total: paths.length, results });
 });
 
 /* ================================================================== */
@@ -224,63 +259,68 @@ router.post('/:id/override', async (req, res) => {
   if (eligible.length === 0) {
     return res.status(400).json({ error: 'No skipped or scanned photos found for the given IDs' });
   }
+  if (overrideLocks.has(job.id)) {
+    return res.status(409).json({ error: 'An override is already in progress for this job' });
+  }
+  overrideLocks.add(job.id);
 
   /* Mark job as overriding */
   updateJobStatus(req.db, job.id, 'overriding');
 
-  const now = new Date().toISOString();
-  let copiedCount = 0;
-  let errorCount = 0;
+  const successful = [];
   const results = [];
+  let errorCount = 0;
 
-  for (const photo of eligible) {
-    try {
-      if (!fs.existsSync(photo.src_path)) {
-        results.push({ id: photo.id, error: 'Source file not found' });
+  try {
+    for (const photo of eligible) {
+      try {
+        if (!fs.existsSync(photo.src_path)) throw new Error('Source file not found');
+        const requestedPath = buildDestPath(photo.src_path, job.dest_dir, photo.date_taken);
+        assertNotInSource(req.db, requestedPath);
+        const operation = installNewFile(photo.src_path, requestedPath);
+        successful.push({ photo, operation });
+        results.push({ id: photo.id, destPath: operation.finalPath });
+      } catch (error) {
         errorCount++;
-        continue;
+        results.push({ id: photo.id, error: error.message });
       }
-
-      const destPath = buildDestPath(photo.src_path, job.dest_dir, photo.date_taken);
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-
-      /* Avoid overwriting — append suffix if file exists */
-      let finalDest = destPath;
-      if (fs.existsSync(finalDest)) {
-        const ext = path.extname(destPath);
-        const base = destPath.slice(0, -ext.length);
-        let n = 1;
-        while (fs.existsSync(finalDest)) {
-          finalDest = `${base}_${n}${ext}`;
-          n++;
-        }
-      }
-
-      fs.copyFileSync(photo.src_path, finalDest);
-      updatePhotoOverride(req.db, photo.id, { status: 'copied', destPath: finalDest, overriddenAt: now });
-      copiedCount++;
-      results.push({ id: photo.id, destPath: finalDest });
-    } catch (err) {
-      results.push({ id: photo.id, error: err.message });
-      errorCount++;
     }
+
+    const persist = req.db.transaction(() => {
+      for (const { photo, operation } of successful) {
+        markPhotoCopied(req.db, photo.id, {
+          destPath: operation.finalPath,
+          outputOwned: true,
+          outputOperation: 'override',
+        });
+      }
+      if (errorCount > 0) {
+        req.db.prepare('UPDATE jobs SET errors = errors + ? WHERE id = ?')
+          .run(errorCount, job.id);
+      }
+      updateJobStatus(req.db, job.id, 'done');
+    });
+
+    try {
+      persist();
+    } catch (error) {
+      for (const { operation } of successful.reverse()) operation.rollback();
+      throw error;
+    }
+    for (const { operation } of successful) operation.commit();
+
+    res.json({
+      overridden: successful.length,
+      errors: errorCount,
+      results,
+      job: getJob(req.db, job.id),
+    });
+  } catch (error) {
+    updateJobStatus(req.db, job.id, 'done', { error_message: error.message });
+    res.status(500).json({ error: error.message });
+  } finally {
+    overrideLocks.delete(job.id);
   }
-
-  /* Adjust job counters — count how many were skipped vs scanned */
-  const skippedOverridden = eligible.filter((p) => p.status === 'skipped').length;
-  const updatedJob = getJob(req.db, job.id);
-  updateJobStatus(req.db, job.id, 'done', {
-    copied: (updatedJob.copied || 0) + copiedCount,
-    skipped: Math.max(0, (updatedJob.skipped || 0) - Math.min(skippedOverridden, copiedCount)),
-    errors: (updatedJob.errors || 0) + errorCount,
-  });
-
-  res.json({
-    overridden: copiedCount,
-    errors: errorCount,
-    results,
-    job: getJob(req.db, job.id),
-  });
 });
 
 module.exports = router;

@@ -6,6 +6,7 @@ import hashlib
 import mmap
 import os
 import threading
+from contextlib import contextmanager
 from collections import defaultdict
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -73,6 +74,7 @@ class DeduplicationIndex:
         self._next_id = 1
 
         self._lock = threading.Lock()
+        self._copy_locks = {}
 
         self._by_partial_hash: Dict[str, Set[int]] = defaultdict(set)
         self._by_size_exact: Dict[int, Set[int]] = defaultdict(set)
@@ -83,6 +85,38 @@ class DeduplicationIndex:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+    @contextmanager
+    def copy_guard(self, src_path: str):
+        """Serialize match/copy/register for files with the same hash and size."""
+        try:
+            key = (
+                os.path.getsize(src_path),
+                compute_partial_hash(src_path, self.partial_hash_bytes),
+            )
+        except OSError:
+            key = None
+
+        if not key or not key[1]:
+            yield
+            return
+
+        with self._lock:
+            entry = self._copy_locks.get(key)
+            if entry is None:
+                entry = {"lock": threading.Lock(), "users": 0}
+                self._copy_locks[key] = entry
+            entry["users"] += 1
+
+        entry["lock"].acquire()
+        try:
+            yield
+        finally:
+            entry["lock"].release()
+            with self._lock:
+                entry["users"] -= 1
+                if entry["users"] == 0:
+                    self._copy_locks.pop(key, None)
+
     def build_record(
         self,
         src_path: str,

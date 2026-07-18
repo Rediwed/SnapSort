@@ -328,7 +328,9 @@ export default function Photos() {
       // Second click = confirm
       clearTimeout(pendingTimer.current);
       setPendingResolve(null);
-      resolveDuplicate(dupId, resolution).then(() => loadPhotos());
+      resolveDuplicate(dupId, resolution)
+        .then(() => loadPhotos())
+        .catch((error) => alert(`Resolution failed: ${error.message}`));
     } else {
       // First click = stage
       clearTimeout(pendingTimer.current);
@@ -497,7 +499,7 @@ export default function Photos() {
                           {pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'keep_rename' ? 'Confirm?' : 'Keep Both'}
                         </button>
                       )}
-                      {res !== 'undecided' && (
+                      {res !== 'undecided' && photo.dup_operation_status !== 'succeeded' && (
                         <button
                           className={`btn sm${pendingResolve?.dupId === photo.dup_id && pendingResolve?.resolution === 'undecided' ? ' confirming' : ''}`}
                           onClick={() => stageResolve(photo.dup_id, 'undecided')}

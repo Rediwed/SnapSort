@@ -225,6 +225,7 @@ function handleEvent(db, jobId, evt) {
         processed: evt.processed,
         copied: evt.copied,
         skipped: evt.skipped,
+        scanned: evt.scanned || 0,
         errors: evt.errors,
         total_files: total,
       });
@@ -254,6 +255,8 @@ function handleEvent(db, jobId, evt) {
         skipReason: evt.skip_reason || null,
         hash: evt.hash || null,
         dpi: evt.dpi || null,
+        outputOwned: evt.status === 'copied' && Boolean(evt.dest_path),
+        outputOperation: evt.status === 'copied' ? 'organizer' : null,
       });
       /* Remember the photo ID so the subsequent duplicate event can reference it */
       const idMap = photoIdMaps.get(jobId);
@@ -296,6 +299,12 @@ function handleEvent(db, jobId, evt) {
       console.log(`[job ${jobId}] Done — total_bytes=${evt.summary?.total_bytes || 0}`);
       updateJobStatus(db, jobId, 'done', {
         finished_at: new Date().toISOString(),
+        processed: evt.summary?.processed || 0,
+        copied: evt.summary?.copied || 0,
+        skipped: evt.summary?.skipped || 0,
+        scanned: evt.summary?.scanned || 0,
+        errors: evt.summary?.errors || 0,
+        total_files: evt.summary?.total_files || 0,
         total_bytes: evt.summary?.total_bytes || 0,
       });
       break;

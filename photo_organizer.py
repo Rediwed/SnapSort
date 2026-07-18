@@ -14,7 +14,7 @@ import threading
 from datetime import datetime
 from photo_utils import copy_photo_with_metadata, extract_date_taken
 from logging_utils import log_message, log_csv, ensure_csv_config
-from path_utils import construct_dest_path
+from path_utils import canonicalize_path, construct_dest_path, paths_overlap
 from dedup_utils import DeduplicationIndex
 
 # --- CONFIGURABLE PARAMETERS ---
@@ -45,6 +45,23 @@ DEDUP_PARTIAL_HASH_BYTES = 8192  # Kept in sync with FAST_HASH_BYTES
 # Performance optimizations for SSDs
 ENABLE_FAST_HASH = True  # Use optimized hashing for better SSD performance
 FAST_HASH_BYTES = 8192  # Bytes to sample for fast hashing (8KB default)
+
+
+def canonicalize_roots(source_dir, dest_dir):
+    """Return canonical, existing source and disjoint destination roots."""
+    if not source_dir or not os.path.isdir(source_dir):
+        raise ValueError(f"Source directory does not exist: {source_dir}")
+    if not dest_dir:
+        raise ValueError("Destination directory is required")
+
+    canonical_source = canonicalize_path(source_dir)
+    canonical_destination = canonicalize_path(dest_dir)
+    if paths_overlap(canonical_source, canonical_destination):
+        raise ValueError(
+            f"Source and destination must be disjoint: "
+            f"{canonical_source} vs {canonical_destination}"
+        )
+    return canonical_source, canonical_destination
 
 # Read version from VERSION file
 with open(os.path.join(os.path.dirname(__file__), "VERSION")) as f:
@@ -184,6 +201,7 @@ def print_progress(processed, total, copied, skipped, errors, start_time, scan_c
 
 def scan_and_organize_photos(processed_set=None):
     """Scan the source directory for photos and organize them into the destination directory."""
+    global SOURCE_DIR, DEST_DIR
     prompt_if_needed()
     ensure_csv_config()
     start_time = time.time()
@@ -203,8 +221,10 @@ def scan_and_organize_photos(processed_set=None):
         partial_hash_bytes=DEDUP_PARTIAL_HASH_BYTES,
     )
 
-    if not os.path.isdir(SOURCE_DIR):
-        end_reason = f"Critical error: Source directory does not exist: {SOURCE_DIR}"
+    try:
+        SOURCE_DIR, DEST_DIR = canonicalize_roots(SOURCE_DIR, DEST_DIR)
+    except ValueError as error:
+        end_reason = f"Critical error: {error}"
         print(end_reason)
         log_message(end_reason)
         return
@@ -245,7 +265,8 @@ def scan_and_organize_photos(processed_set=None):
                     src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
                     SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
                     hash_func, log_csv, log_message,
-                    dedup_index=dedup_index
+                    dedup_index=dedup_index,
+                    source_root=SOURCE_DIR,
                 )
                 if result == "copied":
                     images_copied += 1
@@ -305,9 +326,11 @@ def scan_and_organize_photos(processed_set=None):
 
 def manual_copy_from_csv():
     """Manually copy files from a CSV log file."""
+    global SOURCE_DIR, DEST_DIR
     csv_path = input("Enter path to CSV log file (default: photo_organizer.csv): ").strip() or CSV_LOG_FILE
     csv_path = csv_path.strip("'\"")
     load_config_from_csv(csv_path)
+    SOURCE_DIR, DEST_DIR = canonicalize_roots(SOURCE_DIR, DEST_DIR)
     ensure_csv_config()
     dedup_index = DeduplicationIndex(
         strict_threshold=DEDUP_STRICT_THRESHOLD,
@@ -339,7 +362,8 @@ def manual_copy_from_csv():
             SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
             hash_func, log_csv, log_message,
             force_copy=(row.get('copy_anyway', '').strip().lower() in ['yes', '1']),
-            dedup_index=dedup_index
+            dedup_index=dedup_index,
+            source_root=SOURCE_DIR,
         )
         if result == "copied":
             copied += 1
@@ -452,7 +476,8 @@ def optimized_directory_scan(source_dir, supported_extensions, progress_callback
 
 def process_single_file(src_path, dest_dir, min_width, min_height,
                         min_filesize, supported_extensions, system_folders,
-                        hash_func, dedup_index, copy_semaphore=None):
+                        hash_func, dedup_index, copy_semaphore=None,
+                        source_root=None):
     """Process one photo file — extract metadata, copy, and return a result dict.
 
     The result dict always contains:
@@ -497,6 +522,7 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
             hash_func, log_csv, _log,
             dedup_index=dedup_index,
             copy_semaphore=copy_semaphore,
+            source_root=source_root,
         )
         result["status"] = status
         result["dest_path"] = dest_path
@@ -774,8 +800,10 @@ def json_mode():
     scan_only = cfg.get("mode") == "scan"
 
     # ── Validate paths ──────────────────────────────────────────────
-    if not SOURCE_DIR or not os.path.isdir(SOURCE_DIR):
-        emit({"event": "error", "message": f"Source directory does not exist: {SOURCE_DIR}"})
+    try:
+        SOURCE_DIR, DEST_DIR = canonicalize_roots(SOURCE_DIR, DEST_DIR)
+    except ValueError as error:
+        emit({"event": "error", "message": str(error)})
         sys.exit(1)
 
     # In scan mode the destination doesn't need to exist — we only read from it
@@ -881,6 +909,7 @@ def json_mode():
                 "processed": counters["processed"],
                 "copied": counters["copied"],
                 "skipped": counters["skipped"],
+                "scanned": counters["scanned"],
                 "errors": counters["errors"],
                 "total_files": total_files,
             })
@@ -926,6 +955,7 @@ def json_mode():
             hash_func=hash_func,
             dedup_index=dedup_index,
             copy_semaphore=_copy_semaphore,
+            source_root=SOURCE_DIR,
         )
 
         if use_threading and total_files > 0:

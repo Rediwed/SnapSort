@@ -46,6 +46,7 @@ function initDb(dbPath) {
       processed     INTEGER NOT NULL DEFAULT 0,
       copied        INTEGER NOT NULL DEFAULT 0,
       skipped       INTEGER NOT NULL DEFAULT 0,
+      scanned       INTEGER NOT NULL DEFAULT 0,
       errors        INTEGER NOT NULL DEFAULT 0,
       total_bytes   INTEGER NOT NULL DEFAULT 0,
       error_message TEXT,
@@ -63,6 +64,9 @@ function initDb(dbPath) {
     }
     if (!cols.includes('name')) {
       db.exec('ALTER TABLE jobs ADD COLUMN name TEXT');
+    }
+    if (!cols.includes('scanned')) {
+      db.exec('ALTER TABLE jobs ADD COLUMN scanned INTEGER NOT NULL DEFAULT 0');
     }
   } catch { /* table doesn't exist yet — CREATE above handled it */ }
 
@@ -85,7 +89,9 @@ function initDb(dbPath) {
       dpi           INTEGER,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       processed_at  TEXT,
-      overridden_at TEXT
+      overridden_at TEXT,
+      output_owned  INTEGER NOT NULL DEFAULT 0,
+      output_operation TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_photos_job    ON photos(job_id);
     CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status);
@@ -104,6 +110,12 @@ function initDb(dbPath) {
     if (!photoCols.includes('dpi')) {
       db.exec('ALTER TABLE photos ADD COLUMN dpi INTEGER');
     }
+    if (!photoCols.includes('output_owned')) {
+      db.exec('ALTER TABLE photos ADD COLUMN output_owned INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!photoCols.includes('output_operation')) {
+      db.exec('ALTER TABLE photos ADD COLUMN output_operation TEXT');
+    }
     /* Data fix: reclassify "cannot open image" from skipped → error */
     db.exec(`UPDATE photos SET status = 'error' WHERE status = 'skipped' AND skip_reason = 'cannot open image'`);
   } catch { /* table doesn't exist yet — CREATE above handled it */ }
@@ -119,11 +131,28 @@ function initDb(dbPath) {
       matched_path  TEXT,
       similarity    REAL NOT NULL DEFAULT 0,
       resolution    TEXT,           -- keep | delete | undecided
+      applied_at    TEXT,
+      operation_status TEXT,
+      operation_error TEXT,
       created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_dup_job   ON duplicates(job_id);
     CREATE INDEX IF NOT EXISTS idx_dup_photo ON duplicates(photo_id);
   `);
+
+  /* Migration: add duplicate resolution outcome columns */
+  try {
+    const duplicateCols = db.pragma('table_info(duplicates)').map((c) => c.name);
+    if (!duplicateCols.includes('applied_at')) {
+      db.exec('ALTER TABLE duplicates ADD COLUMN applied_at TEXT');
+    }
+    if (!duplicateCols.includes('operation_status')) {
+      db.exec('ALTER TABLE duplicates ADD COLUMN operation_status TEXT');
+    }
+    if (!duplicateCols.includes('operation_error')) {
+      db.exec('ALTER TABLE duplicates ADD COLUMN operation_error TEXT');
+    }
+  } catch { /* table doesn't exist yet — CREATE above handled it */ }
 
   /* ---- settings ---- */
   db.exec(`
