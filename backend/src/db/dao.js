@@ -58,8 +58,10 @@ function deleteJob(db, id) {
 }
 
 function listPhotoPaths(db, jobId) {
+  /* Never return pre-existing destination files (e.g. duplicate overwrites):
+     they were not created by this job and must not be deleted on cleanup. */
   return db.prepare(
-    "SELECT dest_path FROM photos WHERE job_id = ? AND dest_path IS NOT NULL AND status = 'copied'"
+    "SELECT dest_path FROM photos WHERE job_id = ? AND dest_path IS NOT NULL AND status = 'copied' AND COALESCE(preexisting, 0) = 0"
   ).all(jobId).map((r) => r.dest_path);
 }
 

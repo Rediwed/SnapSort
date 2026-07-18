@@ -10,7 +10,7 @@ const {
   getPhotosByIds, updatePhotoOverride,
 } = require('../db/dao');
 const { startJob, cancelJob, getActiveJobIds, getCurrentFile } = require('../services/pythonBridge');
-const { assertNotInSource } = require('../sourceGuard');
+const { assertNotInSource, isInSourceDir } = require('../sourceGuard');
 const { notifyJobCancelled } = require('../services/ntfyService');
 
 const router = Router();
@@ -110,6 +110,10 @@ router.post('/', (req, res) => {
   }
   if (resolvedSrc.startsWith(resolvedDst + path.sep)) {
     return res.status(400).json({ error: 'Source must not be inside the destination directory — this would cause SnapSort to re-process its own output.' });
+  }
+  /* Cross-job safety: the destination must not sit inside ANY existing source. */
+  if (isInSourceDir(req.db, destDir)) {
+    return res.status(400).json({ error: 'Destination overlaps a folder used as a source by another job. Choose a destination outside all source folders.' });
   }
   const job = createJob(req.db, { name, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile });
   res.status(201).json(job);
@@ -242,6 +246,8 @@ router.post('/:id/override', async (req, res) => {
       }
 
       const destPath = buildDestPath(photo.src_path, job.dest_dir, photo.date_taken);
+      /* Source safety: refuse to write anywhere inside a known source directory. */
+      assertNotInSource(req.db, destPath);
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
 
       /* Avoid overwriting — append suffix if file exists */

@@ -85,7 +85,8 @@ function initDb(dbPath) {
       dpi           INTEGER,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       processed_at  TEXT,
-      overridden_at TEXT
+      overridden_at TEXT,
+      preexisting   INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_photos_job    ON photos(job_id);
     CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status);
@@ -103,6 +104,9 @@ function initDb(dbPath) {
     }
     if (!photoCols.includes('dpi')) {
       db.exec('ALTER TABLE photos ADD COLUMN dpi INTEGER');
+    }
+    if (!photoCols.includes('preexisting')) {
+      db.exec('ALTER TABLE photos ADD COLUMN preexisting INTEGER NOT NULL DEFAULT 0');
     }
     /* Data fix: reclassify "cannot open image" from skipped → error */
     db.exec(`UPDATE photos SET status = 'error' WHERE status = 'skipped' AND skip_reason = 'cannot open image'`);

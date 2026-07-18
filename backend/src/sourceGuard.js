@@ -11,26 +11,52 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 const { listJobs } = require('./db/dao');
 
 /**
+ * Canonicalize a path, resolving symlinks. For paths that do not exist yet
+ * (e.g. a destination file about to be written), the deepest existing ancestor
+ * is realpath'd and the missing tail re-appended, so a symlinked prefix cannot
+ * be used to smuggle a write into a source directory.
+ */
+function canonicalize(p) {
+  const resolved = path.resolve(p);
+  let current = resolved;
+  const tail = [];
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      const real = fs.realpathSync(current);
+      return tail.length ? path.join(real, ...tail.reverse()) : real;
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return resolved; // nothing along the path exists
+      tail.push(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
  * Collect every source directory that has ever been used in a job.
- * Returns a Set of resolved absolute paths.
+ * Returns a Set of canonical absolute paths.
  */
 function getSourceDirs(db) {
   const jobs = listJobs(db, { limit: 10000 });
   const dirs = new Set();
   for (const job of jobs) {
-    if (job.source_dir) dirs.add(path.resolve(job.source_dir));
+    if (job.source_dir) dirs.add(canonicalize(job.source_dir));
   }
   return dirs;
 }
 
 /**
  * Returns true if `filePath` lives inside any known source directory.
+ * Comparison is done on canonical (symlink-resolved) paths.
  */
 function isInSourceDir(db, filePath) {
-  const resolved = path.resolve(filePath);
+  const resolved = canonicalize(filePath);
   const sourceDirs = getSourceDirs(db);
   for (const dir of sourceDirs) {
     if (resolved === dir || resolved.startsWith(dir + path.sep)) {
@@ -52,4 +78,4 @@ function assertNotInSource(db, filePath) {
   }
 }
 
-module.exports = { isInSourceDir, assertNotInSource, getSourceDirs };
+module.exports = { isInSourceDir, assertNotInSource, getSourceDirs, canonicalize };

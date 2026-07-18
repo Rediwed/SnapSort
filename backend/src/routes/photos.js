@@ -85,19 +85,42 @@ router.get('/:id/preview', (req, res) => {
     ? photo.dest_path
     : photo.src_path;
 
-  if (!filePath || !fs.existsSync(filePath)) {
+  if (!filePath) {
     return res.status(404).json({ error: 'Image file not found on disk' });
   }
 
+  /* Reject symlinks and non-regular files so we never stream an arbitrary target. */
+  let stat;
+  try {
+    stat = fs.lstatSync(filePath);
+  } catch {
+    return res.status(404).json({ error: 'Image file not found on disk' });
+  }
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    return res.status(400).json({ error: 'Refusing to serve a non-regular file' });
+  }
+
   const ext = path.extname(filePath).toLowerCase();
-  const mimeTypes = {
+  /* Only raster formats that browsers render safely are served inline. */
+  const SAFE_INLINE = {
     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
     '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
     '.tiff': 'image/tiff', '.tif': 'image/tiff', '.heic': 'image/heic',
-    '.heif': 'image/heif', '.avif': 'image/avif', '.svg': 'image/svg+xml',
+    '.heif': 'image/heif', '.avif': 'image/avif',
   };
-  res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; sandbox");
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+
+  const mime = SAFE_INLINE[ext];
+  if (mime) {
+    res.setHeader('Content-Type', mime);
+  } else {
+    /* Anything else (SVG, RAW, unknown) is downloaded, never rendered inline in
+       the app origin — active SVG therefore cannot execute against SnapSort. */
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath).replace(/"/g, '')}"`);
+  }
   fs.createReadStream(filePath).pipe(res);
 });
 

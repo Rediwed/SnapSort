@@ -72,11 +72,15 @@ router.patch('/:id', async (req, res) => {
       fs.mkdirSync(path.dirname(matchedFile), { recursive: true });
       fs.copyFileSync(srcFile, matchedFile);
 
-      /* Update the photo record so the UI reflects the new state */
+      /* Update photo + counter atomically; flag the pre-existing overwritten file
+         so job cleanup never deletes a file this job did not create. */
       const photo = getPhoto(req.db, dup.photo_id);
       if (photo) {
-        req.db.prepare('UPDATE photos SET status = ?, dest_path = ?, skip_reason = NULL, overridden_at = ? WHERE id = ?')
-          .run('copied', matchedFile, new Date().toISOString(), photo.id);
+        req.db.transaction(() => {
+          req.db.prepare('UPDATE photos SET status = ?, dest_path = ?, skip_reason = NULL, overridden_at = ?, preexisting = 1 WHERE id = ?')
+            .run('copied', matchedFile, new Date().toISOString(), photo.id);
+          req.db.prepare('UPDATE jobs SET copied = COALESCE(copied, 0) + 1 WHERE id = ?').run(dup.job_id);
+        })();
       }
     } else if (resolution === 'keep_rename' && srcFile) {
       /* Copy source → destination with a unique filename alongside the match */
@@ -103,11 +107,14 @@ router.patch('/:id', async (req, res) => {
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.copyFileSync(srcFile, destPath);
 
-      /* Update the photo record */
+      /* Update photo + counter atomically; the renamed copy is a new, job-owned file. */
       const photo = getPhoto(req.db, dup.photo_id);
       if (photo) {
-        req.db.prepare('UPDATE photos SET status = ?, dest_path = ?, skip_reason = NULL, overridden_at = ? WHERE id = ?')
-          .run('copied', destPath, new Date().toISOString(), photo.id);
+        req.db.transaction(() => {
+          req.db.prepare('UPDATE photos SET status = ?, dest_path = ?, skip_reason = NULL, overridden_at = ?, preexisting = 0 WHERE id = ?')
+            .run('copied', destPath, new Date().toISOString(), photo.id);
+          req.db.prepare('UPDATE jobs SET copied = COALESCE(copied, 0) + 1 WHERE id = ?').run(dup.job_id);
+        })();
       }
     }
     /* ignore / undecided — no file operation */
