@@ -119,13 +119,11 @@ export default function Benchmarks() {
     : null;
 
   const phaseLabel = {
-    setup: 'Creating test files…',
-    source_write: 'Writing to source…',
+    setup: 'Sampling source files…',
     source_read: 'Reading from source…',
     dest_write: 'Writing to destination…',
     copy: 'Copying source → destination…',
-    hash_single: 'Hashing (single-thread)…',
-    hash_parallel: 'Hashing (multi-core)…',
+    hash: 'Measuring hash throughput…',
   };
 
   const historyColumns = [
@@ -205,7 +203,7 @@ export default function Benchmarks() {
           )}
 
           <div style={{ padding: '8px 12px', background: 'var(--orange-muted, rgba(210,153,34,0.1))', borderRadius: 'var(--radius-md)', color: 'var(--orange)', fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
-                        <AlertTriangle size={14} /> Temporary test files will be written to <strong>both</strong> source and destination folders during the benchmark, then automatically deleted afterwards. Do not use this on a source drive that is malfunctioning or at risk of data loss.
+                        <AlertTriangle size={14} /> Your source is opened <strong>read-only</strong> — SnapSort never writes to source drives. Temporary test files are written <strong>only to the destination</strong>, in a randomized folder that is removed automatically when the benchmark finishes.
           </div>
 
           <div className="bench-options">
