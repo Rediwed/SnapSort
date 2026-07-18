@@ -91,6 +91,7 @@ function initDb(dbPath) {
     CREATE INDEX IF NOT EXISTS idx_photos_job    ON photos(job_id);
     CREATE INDEX IF NOT EXISTS idx_photos_status ON photos(status);
     CREATE INDEX IF NOT EXISTS idx_photos_hash   ON photos(hash);
+    CREATE INDEX IF NOT EXISTS idx_photos_job_created ON photos(job_id, created_at);
   `);
 
   /* Migration: add processed_at / overridden_at columns to existing photos tables */
@@ -127,6 +128,7 @@ function initDb(dbPath) {
     );
     CREATE INDEX IF NOT EXISTS idx_dup_job   ON duplicates(job_id);
     CREATE INDEX IF NOT EXISTS idx_dup_photo ON duplicates(photo_id);
+    CREATE INDEX IF NOT EXISTS idx_dup_resolution ON duplicates(resolution);
   `);
 
   /* ---- settings ---- */

@@ -5,21 +5,26 @@
 const { Router } = require('express');
 const path = require('path');
 const fs = require('fs');
-const { listPhotos, countPhotos, getPhoto, listJobs } = require('../db/dao');
+const { listPhotos, countPhotos, getPhoto, listJobs, jobIdsWithPhotos } = require('../db/dao');
 
 const router = Router();
 
 /* List photos with optional filters */
 router.get('/', (req, res) => {
   const { jobId, status, isDuplicate, resolution, search, limit, offset } = req.query;
+  if (search && String(search).length > 200) {
+    return res.status(400).json({ error: 'search is too long (max 200 characters)' });
+  }
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
   const photos = listPhotos(req.db, {
     jobId,
     status,
     isDuplicate,
     resolution,
     search: search || undefined,
-    limit: limit ? Number(limit) : 100,
-    offset: offset ? Number(offset) : 0,
+    limit: safeLimit,
+    offset: safeOffset,
   });
   const total = countPhotos(req.db, { jobId, status, isDuplicate, resolution, search: search || undefined });
   res.json({ photos, total });
@@ -28,11 +33,9 @@ router.get('/', (req, res) => {
 /* List all jobs that have photos (for the job dropdown) */
 router.get('/jobs', (req, res) => {
   const jobs = listJobs(req.db, { limit: 500 });
-  // Only return jobs that actually have photos
-  const jobsWithPhotos = jobs.filter((j) => {
-    const count = countPhotos(req.db, { jobId: j.id });
-    return count > 0;
-  }).map((j) => ({
+  // One DISTINCT query instead of one COUNT per job (avoids N+1).
+  const withPhotos = jobIdsWithPhotos(req.db);
+  const jobsWithPhotos = jobs.filter((j) => withPhotos.has(j.id)).map((j) => ({
     id: j.id,
     source_dir: j.source_dir,
     dest_dir: j.dest_dir,

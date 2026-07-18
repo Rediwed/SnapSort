@@ -31,6 +31,10 @@ const photoIdMaps = new Map();
 const currentFiles = new Map();
 /* Set of jobIds that have been cancelled by the user — prevents the close handler from overwriting the status */
 const cancelledJobs = new Set();
+/* jobId -> descriptive error message emitted by the Python 'error' event */
+const jobErrors = new Map();
+/* jobIds that have reached a terminal state — late/buffered events are ignored */
+const finishedJobs = new Set();
 
 /**
  * Start a job by spawning the Python organizer.
@@ -95,9 +99,6 @@ function startJob(db, job) {
   /* Send ntfy notification for job start */
   notifyJobStarted(db, job);
 
-  /* Track whether the Python process sent an error event with a descriptive message */
-  let pythonErrorMessage = null;
-
   /* Feed config via stdin */
   child.stdin.write(config);
   child.stdin.end();
@@ -140,6 +141,10 @@ function startJob(db, job) {
     activeProcesses.delete(job.id);
     photoIdMaps.delete(job.id);
     currentFiles.delete(job.id);
+    /* Descriptive error captured from the Python 'error' event, if any. */
+    const pythonErrorMessage = jobErrors.get(job.id) || null;
+    jobErrors.delete(job.id);
+    finishedJobs.delete(job.id);
     /* If this job was cancelled by the user, the route already set the correct status — skip */
     if (cancelledJobs.has(job.id)) {
       cancelledJobs.delete(job.id);
@@ -152,18 +157,13 @@ function startJob(db, job) {
       finalJob = getJob(db, job.id);
     } catch { finalJob = job; }
 
-    if (code === 0) {
-      /* Only mark done if the Python error handler didn't already set an error */
-      if (!pythonErrorMessage) {
-        updateJobStatus(db, job.id, 'done', { finished_at: new Date().toISOString() });
-        notifyJobCompleted(db, finalJob);
-      } else {
-        notifyJobError(db, finalJob, pythonErrorMessage);
-      }
+    if (code === 0 && !pythonErrorMessage) {
+      updateJobStatus(db, job.id, 'done', { finished_at: new Date().toISOString() });
+      notifyJobCompleted(db, finalJob);
     } else {
       /* Preserve the descriptive error from Python's error event if we have one */
       const message = pythonErrorMessage || `Process exited with code ${code}`;
-      console.error(`[job ${job.id}] Python process exited with code ${code}: ${message}`);
+      console.error(`[job ${job.id}] Python process ended in error: ${message}`);
       updateJobStatus(db, job.id, 'error', {
         error_message: message,
         finished_at: new Date().toISOString(),
@@ -200,6 +200,9 @@ function cancelJob(jobId, db) {
  * Handle a single JSON event from the Python process.
  */
 function handleEvent(db, jobId, evt) {
+  /* Ignore any event that arrives after the job reached a terminal state
+     (done/error/cancelled) — prevents buffered events racing the final status. */
+  if (finishedJobs.has(jobId) || cancelledJobs.has(jobId)) return;
   switch (evt.event) {
     case 'scanning': {
       const phase = evt.phase || 'scanning';
@@ -298,10 +301,13 @@ function handleEvent(db, jobId, evt) {
         finished_at: new Date().toISOString(),
         total_bytes: evt.summary?.total_bytes || 0,
       });
+      finishedJobs.add(jobId);
       break;
 
     case 'error':
       console.error(`[job ${jobId}] Python error: ${evt.message}`);
+      jobErrors.set(jobId, evt.message);
+      finishedJobs.add(jobId);
       updateJobStatus(db, jobId, 'error', {
         error_message: evt.message,
         finished_at: new Date().toISOString(),

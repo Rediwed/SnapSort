@@ -63,6 +63,15 @@ app.use((req, res, next) => {
 /* ------------------------------------------------------------------ */
 const db = initDb(path.join(__dirname, '..', 'data', 'snapsort.db'));
 
+/* Reconcile jobs left 'running'/'overriding' by a previous crash/restart. */
+try {
+  const { reconcileInterruptedJobs } = require('./db/dao');
+  const reconciled = reconcileInterruptedJobs(db);
+  if (reconciled) console.warn(`Reconciled ${reconciled} interrupted job(s) from a previous run.`);
+} catch (err) {
+  console.error('Job reconciliation failed:', err.message);
+}
+
 /* Attach db to every request so routes can access it */
 app.use((req, _res, next) => {
   req.db = db;

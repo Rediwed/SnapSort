@@ -36,6 +36,24 @@ function listJobs(db, { limit = 50, offset = 0, status } = {}) {
   return db.prepare(sql).all(...params);
 }
 
+function reconcileInterruptedJobs(db) {
+  /* After a crash/restart the in-memory process map is empty, so any job still
+     marked running/overriding was interrupted. Mark it errored so the UI is honest. */
+  return db.prepare(
+    "UPDATE jobs SET status = 'error', error_message = 'Interrupted by a server restart', finished_at = datetime('now') WHERE status IN ('running','overriding')"
+  ).run().changes;
+}
+
+function clearJobResults(db, jobId) {
+  /* Remove a job's photos + duplicates and reset counters so it can be re-run.
+     Does NOT delete any files on disk. */
+  db.transaction(() => {
+    db.prepare('DELETE FROM duplicates WHERE job_id = ?').run(jobId);
+    db.prepare('DELETE FROM photos WHERE job_id = ?').run(jobId);
+    db.prepare("UPDATE jobs SET processed = 0, copied = 0, skipped = 0, errors = 0, total_files = 0, total_bytes = 0, error_message = NULL, finished_at = NULL WHERE id = ?").run(jobId);
+  })();
+}
+
 function updateJobStatus(db, id, status, extra = {}) {
   const sets = ['status = ?'];
   const params = [status];
@@ -136,6 +154,15 @@ function countPhotos(db, { jobId, status, isDuplicate, resolution, search } = {}
     }
   }
   return db.prepare(sql).get(...params).count;
+}
+
+/* Single-query helpers to avoid N+1 counts when listing jobs that have rows. */
+function jobIdsWithPhotos(db) {
+  return new Set(db.prepare('SELECT DISTINCT job_id FROM photos').all().map((r) => r.job_id));
+}
+
+function jobIdsWithDuplicates(db) {
+  return new Set(db.prepare('SELECT DISTINCT job_id FROM duplicates').all().map((r) => r.job_id));
 }
 
 function getPhoto(db, id) {
@@ -300,8 +327,8 @@ function getDashboardStats(db) {
 }
 
 module.exports = {
-  createJob, getJob, listJobs, updateJobStatus, deleteJob,
-  insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths,
+  createJob, getJob, listJobs, updateJobStatus, deleteJob, reconcileInterruptedJobs, clearJobResults,
+  insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths, jobIdsWithPhotos, jobIdsWithDuplicates,
   getPhotosByIds, updatePhotoOverride,
   insertDuplicate, listDuplicates, resolveDuplicate, getDuplicate, countDuplicates,
   getAllSettings, getSetting, upsertSetting, bulkUpsertSettings,

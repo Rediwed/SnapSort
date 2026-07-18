@@ -14,7 +14,7 @@
 const { Router } = require('express');
 const path = require('path');
 const fs = require('fs');
-const { listDuplicates, countDuplicates, resolveDuplicate, getDuplicate, getJob, getPhoto, listJobs } = require('../db/dao');
+const { listDuplicates, countDuplicates, resolveDuplicate, getDuplicate, getJob, getPhoto, listJobs, jobIdsWithDuplicates } = require('../db/dao');
 const { assertNotInSource } = require('../sourceGuard');
 
 const router = Router();
@@ -22,11 +22,13 @@ const router = Router();
 /* List duplicates */
 router.get('/', (req, res) => {
   const { jobId, resolution, limit, offset } = req.query;
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
   const duplicates = listDuplicates(req.db, {
     jobId,
     resolution,
-    limit: limit ? Number(limit) : 100,
-    offset: offset ? Number(offset) : 0,
+    limit: safeLimit,
+    offset: safeOffset,
   });
   const total = countDuplicates(req.db, { jobId, resolution });
   res.json({ duplicates, total });
@@ -35,10 +37,8 @@ router.get('/', (req, res) => {
 /* List jobs that have duplicates (for the job dropdown) */
 router.get('/jobs', (req, res) => {
   const jobs = listJobs(req.db, { limit: 500 });
-  const jobsWithDups = jobs.filter((j) => {
-    const count = countDuplicates(req.db, { jobId: j.id });
-    return count > 0;
-  }).map((j) => ({
+  const withDups = jobIdsWithDuplicates(req.db);
+  const jobsWithDups = jobs.filter((j) => withDups.has(j.id)).map((j) => ({
     id: j.id,
     source_dir: j.source_dir,
     dest_dir: j.dest_dir,

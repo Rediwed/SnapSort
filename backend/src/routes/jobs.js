@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   createJob, getJob, listJobs, updateJobStatus, deleteJob,
-  getPhotosByIds, updatePhotoOverride,
+  getPhotosByIds, updatePhotoOverride, clearJobResults,
 } = require('../db/dao');
 const { startJob, cancelJob, getActiveJobIds, getCurrentFile } = require('../services/pythonBridge');
 const { assertNotInSource, isInSourceDir } = require('../sourceGuard');
@@ -136,6 +136,20 @@ router.post('/:id/start', (req, res) => {
   }
 
   startJob(req.db, job);
+  const updated = updateJobStatus(req.db, job.id, 'running', { started_at: new Date().toISOString() });
+  res.json(updated);
+});
+
+/* Retry a finished/errored/cancelled job: clears prior results, then re-runs. */
+router.post('/:id/retry', (req, res) => {
+  const job = getJob(req.db, req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.status === 'running') return res.status(409).json({ error: 'Job is already running' });
+  if (!fs.existsSync(job.source_dir)) {
+    return res.status(400).json({ error: `Source directory not found: ${job.source_dir}` });
+  }
+  clearJobResults(req.db, job.id);
+  startJob(req.db, getJob(req.db, job.id));
   const updated = updateJobStatus(req.db, job.id, 'running', { started_at: new Date().toISOString() });
   res.json(updated);
 });
