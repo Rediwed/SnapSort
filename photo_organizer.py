@@ -439,20 +439,11 @@ def file_hash_fast(filepath, max_bytes=8192):
 # ── Shared processing helpers (used by json_mode, parallel_organizer, CLI) ──
 
 
-def optimized_directory_scan(source_dir, supported_extensions, progress_callback=None):
-    """Fast directory scan that prunes system dirs from os.walk in-place.
-
-    Returns a flat list of absolute file paths whose extension matches
-    *supported_extensions*.  Directories listed in ``SYSTEM_FOLDERS`` are
-    never entered — the check modifies *dirs* in-place so ``os.walk``
-    does not recurse into them.
-
-    If *progress_callback* is provided it is called periodically with the
-    current count of discovered files so the caller can emit live updates.
-    """
-    files = []
+def iter_directory_files(source_dir, supported_extensions, progress_callback=None):
+    """Yield supported files while pruning system directories in-place."""
     supported_lower = tuple(ext.lower() for ext in supported_extensions)
     _last_report = 0
+    discovered = 0
 
     for root, dirs, filenames in os.walk(source_dir):
         # Prune child dirs so os.walk will not descend into them.
@@ -463,15 +454,30 @@ def optimized_directory_scan(source_dir, supported_extensions, progress_callback
             continue
         for fname in filenames:
             if fname.lower().endswith(supported_lower):
-                files.append(os.path.join(root, fname))
+                discovered += 1
+                yield os.path.join(root, fname)
         # Report progress every 50 discovered files
-        if progress_callback and len(files) - _last_report >= 50:
-            _last_report = len(files)
-            progress_callback(len(files))
+        if progress_callback and discovered - _last_report >= 50:
+            _last_report = discovered
+            progress_callback(discovered)
     # Final report
-    if progress_callback and len(files) != _last_report:
-        progress_callback(len(files))
-    return files
+    if progress_callback and discovered != _last_report:
+        progress_callback(discovered)
+
+
+def optimized_directory_scan(source_dir, supported_extensions, progress_callback=None):
+    """Compatibility wrapper returning all matching paths as a list."""
+    return list(iter_directory_files(source_dir, supported_extensions, progress_callback))
+
+
+def iter_batches(iterable, batch_size):
+    """Yield bounded lists from an arbitrary iterable."""
+    iterator = iter(iterable)
+    while True:
+        batch = list(itertools.islice(iterator, batch_size))
+        if not batch:
+            return
+        yield batch
 
 
 def process_single_file(src_path, dest_dir, min_width, min_height,
@@ -515,7 +521,7 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
         captured.append(msg)
 
     try:
-        result["file_size"] = os.path.getsize(src_path)
+        extracted_metadata = {}
         status, dest_path = copy_photo_with_metadata(
             src_path, dest_dir, min_width, min_height, min_filesize,
             supported_extensions, system_folders, False,
@@ -523,7 +529,13 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
             dedup_index=dedup_index,
             copy_semaphore=copy_semaphore,
             source_root=source_root,
+            metadata_out=extracted_metadata,
         )
+        result.update({
+            key: value
+            for key, value in extracted_metadata.items()
+            if key in {"file_size", "width", "height", "dpi", "date_taken", "hash"}
+        })
         result["status"] = status
         result["dest_path"] = dest_path
 
@@ -578,32 +590,6 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
     except Exception as exc:
         result["status"] = "error"
         result["skip_reason"] = str(exc)
-
-    # Image dimensions and DPI
-    try:
-        from PIL import Image as _Img
-        with _Img.open(src_path) as im:
-            result["width"], result["height"] = im.size
-            info = im.info or {}
-            dpi_val = info.get("dpi")
-            if dpi_val and isinstance(dpi_val, (tuple, list)) and len(dpi_val) >= 1:
-                result["dpi"] = int(round(dpi_val[0]))
-    except Exception:
-        pass
-
-    # Date taken
-    try:
-        dt = extract_date_taken(src_path)
-        if dt:
-            result["date_taken"] = dt.isoformat()
-    except Exception:
-        pass
-
-    # File hash — used by the backend to populate the photos.hash column
-    try:
-        result["hash"] = hash_func(src_path)
-    except Exception:
-        pass
 
     return result
 
@@ -677,21 +663,28 @@ def scan_single_file(src_path, hash_func, dedup_index):
     # Duplicate detection against destination index
     if dedup_index and result["hash"]:
         try:
-            rec = dedup_index.build_record(
-                src_path,
-                width=result["width"],
-                height=result["height"],
-                date_taken=datetime.fromisoformat(result["date_taken"]) if result["date_taken"] else None,
-            )
-            score, matched = dedup_index.find_best_match(rec)
-            _log_thr = getattr(dedup_index, 'log_threshold', 70.0)
-            if matched and score >= _log_thr:
-                result["similarity"] = float(score)
-                result["duplicate_of"] = (
-                    matched.get("final_path")
-                    or matched.get("proposed_dest_path")
-                    or matched.get("src_path")
+            with dedup_index.copy_guard(src_path):
+                rec = dedup_index.build_record(
+                    src_path,
+                    width=result["width"],
+                    height=result["height"],
+                    date_taken=datetime.fromisoformat(result["date_taken"]) if result["date_taken"] else None,
                 )
+                score, matched = dedup_index.find_best_match(rec)
+                rec["status"] = "scanned"
+                rec["similarity"] = score
+                rec["final_path"] = src_path
+                _log_thr = getattr(dedup_index, 'log_threshold', 70.0)
+                if matched and score >= _log_thr:
+                    result["similarity"] = float(score)
+                    result["duplicate_of"] = (
+                        matched.get("final_path")
+                        or matched.get("proposed_dest_path")
+                        or matched.get("src_path")
+                    )
+                    rec["matched_src_path"] = matched.get("src_path")
+                    rec["matched_final_path"] = result["duplicate_of"]
+                dedup_index.add_record(rec)
         except Exception:
             pass
 
@@ -845,8 +838,11 @@ def json_mode():
     def _scan_progress(count):
         emit({"event": "scanning", "phase": "scanning", "discovered": count})
 
-    all_files = optimized_directory_scan(SOURCE_DIR, SUPPORTED_EXTENSIONS, progress_callback=_scan_progress)
-    total_files = len(all_files)
+    total_files = sum(
+        1 for _ in iter_directory_files(
+            SOURCE_DIR, SUPPORTED_EXTENSIONS, progress_callback=_scan_progress
+        )
+    )
 
     emit({"event": "progress", "processed": 0, "copied": 0, "skipped": 0,
           "errors": 0, "total_files": total_files})
@@ -861,6 +857,7 @@ def json_mode():
     # Shared mutable counters — only mutated from ``_handle_result`` which
     # is called from within the _emit_lock in threaded mode, or sequentially.
     counters = {"processed": 0, "copied": 0, "skipped": 0, "errors": 0, "scanned": 0, "total_bytes": 0}
+    fatal_batch_errors = []
 
     def _handle_result(r):
         """Emit JSON events for a single processed file and update counters.
@@ -920,21 +917,33 @@ def json_mode():
         if use_threading and total_files > 0:
             import concurrent.futures as _cf
 
-            batches = [all_files[i:i + batch_size] for i in range(0, total_files, batch_size)]
-
             def _scan_batch(batch):
                 return [scan_single_file(fp, hash_func, dedup_index) for fp in batch]
 
             with _cf.ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = [pool.submit(_scan_batch, b) for b in batches]
-                for future in _cf.as_completed(futures):
+                pending = set()
+                for batch in iter_batches(
+                    iter_directory_files(SOURCE_DIR, SUPPORTED_EXTENSIONS), batch_size
+                ):
+                    pending.add(pool.submit(_scan_batch, batch))
+                    if len(pending) >= max_workers:
+                        done, pending = _cf.wait(pending, return_when=_cf.FIRST_COMPLETED)
+                        for future in done:
+                            try:
+                                for r in future.result():
+                                    _handle_result(r)
+                            except Exception as exc:
+                                fatal_batch_errors.append(str(exc))
+                                emit({"event": "error", "message": f"Batch error: {exc}"})
+                for future in _cf.as_completed(pending):
                     try:
                         for r in future.result():
                             _handle_result(r)
                     except Exception as exc:
+                        fatal_batch_errors.append(str(exc))
                         emit({"event": "error", "message": f"Batch error: {exc}"})
         else:
-            for fp in all_files:
+            for fp in iter_directory_files(SOURCE_DIR, SUPPORTED_EXTENSIONS):
                 r = scan_single_file(fp, hash_func, dedup_index)
                 _handle_result(r)
                 if demo_delay:
@@ -961,9 +970,6 @@ def json_mode():
         if use_threading and total_files > 0:
             import concurrent.futures as _cf
 
-            # Split into batches
-            batches = [all_files[i:i + batch_size] for i in range(0, total_files, batch_size)]
-
             def _process_batch(batch):
                 """Process a batch and return list of result dicts."""
                 results = []
@@ -974,20 +980,37 @@ def json_mode():
                 return results
 
             with _cf.ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = [pool.submit(_process_batch, b) for b in batches]
-                for future in _cf.as_completed(futures):
+                pending = set()
+                for batch in iter_batches(
+                    iter_directory_files(SOURCE_DIR, SUPPORTED_EXTENSIONS), batch_size
+                ):
+                    pending.add(pool.submit(_process_batch, batch))
+                    if len(pending) >= max_workers:
+                        done, pending = _cf.wait(pending, return_when=_cf.FIRST_COMPLETED)
+                        for future in done:
+                            try:
+                                for r in future.result():
+                                    _handle_result(r)
+                            except Exception as exc:
+                                fatal_batch_errors.append(str(exc))
+                                emit({"event": "error", "message": f"Batch error: {exc}"})
+                for future in _cf.as_completed(pending):
                     try:
                         for r in future.result():
                             _handle_result(r)
                     except Exception as exc:
+                        fatal_batch_errors.append(str(exc))
                         emit({"event": "error", "message": f"Batch error: {exc}"})
         else:
             # Sequential — same logic, no threading overhead
-            for fp in all_files:
+            for fp in iter_directory_files(SOURCE_DIR, SUPPORTED_EXTENSIONS):
                 r = process_single_file(fp, **_common)
                 _handle_result(r)
                 if demo_delay:
                     time.sleep(demo_delay)
+
+    if fatal_batch_errors:
+        sys.exit(1)
 
     # ── Done ────────────────────────────────────────────────────────
     emit({

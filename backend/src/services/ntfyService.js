@@ -10,6 +10,15 @@
 
 const { getAllSettings } = require('../db/dao');
 const { broadcast } = require('./browserNotifyService');
+const dns = require('dns');
+const net = require('net');
+
+const NTFY_TIMEOUT_MS = 10000;
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  'metadata.google.internal',
+  'metadata.azure.internal',
+]);
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
@@ -44,7 +53,7 @@ function duration(startIso) {
 async function send(settings, { title, message, priority, tags }) {
   const server = (settings.ntfy_server || 'https://ntfy.sh').replace(/\/+$/, '');
   const topic = settings.ntfy_topic || 'snapsort';
-  const url = `${server}`;
+  const url = await validateNotificationUrl(server);
 
   const headers = { 'Content-Type': 'application/json' };
   const authType = settings.ntfy_auth_type || 'none';
@@ -60,13 +69,53 @@ async function send(settings, { title, message, priority, tags }) {
   if (priority) payload.priority = Number(priority) || 3;
   if (tags) payload.tags = tags.split(',').map((t) => t.trim());
 
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(NTFY_TIMEOUT_MS),
+  });
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    const err = new Error(`ntfy HTTP ${res.status}: ${body}`);
+    const err = new Error(`ntfy HTTP ${res.status} ${res.statusText}`.trim());
     console.error(`[ntfy] ${err.message}`);
     throw err;
   }
+}
+
+function isBlockedAddress(address) {
+  if (net.isIPv4(address)) {
+    const octets = address.split('.').map(Number);
+    return octets[0] === 0
+      || octets[0] === 127
+      || (octets[0] === 169 && octets[1] === 254)
+      || octets[0] >= 224;
+  }
+  if (net.isIPv6(address)) {
+    const normalized = address.toLowerCase();
+    return normalized === '::' || normalized === '::1'
+      || normalized.startsWith('fe8') || normalized.startsWith('fe9')
+      || normalized.startsWith('fea') || normalized.startsWith('feb')
+      || normalized.startsWith('ff');
+  }
+  return true;
+}
+
+async function validateNotificationUrl(server, lookup = dns.promises.lookup) {
+  let url;
+  try { url = new URL(server); } catch { throw new Error('Invalid ntfy server URL'); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+    throw new Error('ntfy server must use HTTP(S) without embedded credentials');
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (BLOCKED_HOSTNAMES.has(hostname)) throw new Error('ntfy server hostname is blocked');
+
+  const addresses = net.isIP(hostname)
+    ? [{ address: hostname }]
+    : await lookup(hostname, { all: true, verbatim: true });
+  if (!addresses.length || addresses.some(({ address }) => isBlockedAddress(address))) {
+    throw new Error('ntfy server resolves to a blocked network address');
+  }
+  return url.toString().replace(/\/$/, '');
 }
 
 /**
@@ -363,6 +412,8 @@ function sendTestNotification(db) {
 }
 
 module.exports = {
+  isBlockedAddress,
+  validateNotificationUrl,
   notifyJobStarted,
   notifyJobCompleted,
   notifyJobError,

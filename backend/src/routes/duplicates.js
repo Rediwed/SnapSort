@@ -16,33 +16,34 @@ const path = require('path');
 const fs = require('fs');
 const {
   listDuplicates, countDuplicates, recordDuplicateResolution,
-  getDuplicate, getJob, getPhoto, listJobs, markPhotoCopied,
+  getDuplicate, getJob, getPhoto, listJobsWithDuplicates, markPhotoCopied,
 } = require('../db/dao');
 const { assertNotInSource } = require('../sourceGuard');
 const { installNewFile, replaceFileWithRollback } = require('../services/atomicFile');
+const { boundedInteger, boundedString, enumValue, validateForResponse } = require('../security/validation');
 
 const router = Router();
 
 /* List duplicates */
 router.get('/', (req, res) => {
   const { jobId, resolution, limit, offset } = req.query;
+  const validation = validateForResponse(res, () => ({
+    jobId: boundedString(jobId, 'jobId', { maximum: 100 }),
+    resolution: resolution === undefined ? undefined : enumValue(resolution, 'resolution', ['undecided', 'ignore', 'keep_overwrite', 'keep_rename']),
+    limit: boundedInteger(limit, 'limit', { defaultValue: 100, minimum: 1, maximum: 500 }),
+    offset: boundedInteger(offset, 'offset', { defaultValue: 0, minimum: 0, maximum: 1_000_000 }),
+  }));
+  if (!validation.ok) return;
   const duplicates = listDuplicates(req.db, {
-    jobId,
-    resolution,
-    limit: limit ? Number(limit) : 100,
-    offset: offset ? Number(offset) : 0,
+    ...validation.value,
   });
-  const total = countDuplicates(req.db, { jobId, resolution });
+  const total = countDuplicates(req.db, validation.value);
   res.json({ duplicates, total });
 });
 
 /* List jobs that have duplicates (for the job dropdown) */
 router.get('/jobs', (req, res) => {
-  const jobs = listJobs(req.db, { limit: 500 });
-  const jobsWithDups = jobs.filter((j) => {
-    const count = countDuplicates(req.db, { jobId: j.id });
-    return count > 0;
-  }).map((j) => ({
+  const jobsWithDups = listJobsWithDuplicates(req.db).map((j) => ({
     id: j.id,
     source_dir: j.source_dir,
     dest_dir: j.dest_dir,

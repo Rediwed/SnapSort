@@ -12,6 +12,8 @@ const {
   publicSettingUpdate,
   publicSettings,
 } = require('../security/settingsSecrets');
+const { validateSettingsUpdate } = require('../security/settingsPolicy');
+const { validateForResponse } = require('../security/validation');
 
 const router = Router();
 
@@ -27,9 +29,11 @@ router.get('/', (req, res) => {
 
 /* Update a single setting */
 router.put('/:key', (req, res) => {
-  const { value } = req.body;
+  const { value } = req.body || {};
   if (value === undefined) return res.status(400).json({ error: 'value is required' });
-  const normalized = normalizeSettingsUpdate({ [req.params.key]: value });
+  const validation = validateForResponse(res, () => validateSettingsUpdate({ [req.params.key]: value }));
+  if (!validation.ok) return;
+  const normalized = normalizeSettingsUpdate(validation.value);
   if (Object.hasOwn(normalized, req.params.key)) {
     upsertSetting(req.db, req.params.key, normalized[req.params.key]);
   }
@@ -38,11 +42,15 @@ router.put('/:key', (req, res) => {
 
 /* Bulk update settings */
 router.patch('/', (req, res) => {
-  const pairs = req.body;
-  if (!pairs || typeof pairs !== 'object' || Array.isArray(pairs)) {
-    return res.status(400).json({ error: 'Body must be a JSON object of key/value pairs' });
+  const validation = validateForResponse(res, () => validateSettingsUpdate(req.body));
+  if (!validation.ok) return;
+  const normalized = normalizeSettingsUpdate(validation.value);
+  const currentSettings = getAllSettings(req.db);
+  if (normalized.ntfy_server && normalized.ntfy_server !== currentSettings.ntfy_server) {
+    normalized.ntfy_auth_token = '';
+    normalized.ntfy_password = '';
   }
-  bulkUpsertSettings(req.db, normalizeSettingsUpdate(pairs));
+  bulkUpsertSettings(req.db, normalized);
   res.json(publicSettings(getAllSettings(req.db)));
 });
 

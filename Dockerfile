@@ -3,7 +3,7 @@
 # ============================================================
 
 # ---- Stage 1: Build the React frontend ----
-FROM node:20-alpine AS frontend-build
+FROM node:20-alpine@sha256:f598378b5240225e6beab68fa9f356db1fb8efe55173e6d4d8153113bb8f333c AS frontend-build
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
@@ -11,20 +11,20 @@ COPY frontend/ .
 RUN npm run build
 
 # ---- Stage 2: Install backend dependencies ----
-FROM node:20-alpine AS backend-deps
+FROM node:20-alpine@sha256:f598378b5240225e6beab68fa9f356db1fb8efe55173e6d4d8153113bb8f333c AS backend-deps
 WORKDIR /build
 COPY backend/package.json backend/package-lock.json* ./
 RUN npm ci --omit=dev
 
 # ---- Stage 3: Final runtime image ----
-FROM node:20-alpine
+FROM node:20-alpine@sha256:f598378b5240225e6beab68fa9f356db1fb8efe55173e6d4d8153113bb8f333c
 
 RUN apk add --no-cache python3 py3-pip exiftool
 
 # Python dependencies
 WORKDIR /app
 COPY requirements.txt ./
-RUN pip3 install --no-cache-dir --break-system-packages Pillow piexif -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Python engine files
 COPY *.py ./

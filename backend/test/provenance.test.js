@@ -13,6 +13,8 @@ const {
   insertDuplicate,
   insertPhoto,
   listPhotoPaths,
+  listJobsWithDuplicates,
+  listJobsWithPhotos,
   markPhotoCopied,
   recordDuplicateResolution,
 } = require('../src/db/dao');
@@ -126,5 +128,23 @@ test('records duplicate operation outcomes without changing provenance', () => {
     const duplicate = db.prepare('SELECT * FROM duplicates WHERE id = ?').get('duplicate');
     assert.equal(duplicate.operation_status, 'succeeded');
     assert.equal(duplicate.applied_at, '2026-07-18T12:00:00Z');
+  });
+});
+
+test('grouped job selectors return only jobs with photos or duplicates', () => {
+  withDatabase(({ db }) => {
+    const populated = createJob(db, { sourceDir: '/source-a', destDir: '/destination-a' });
+    createJob(db, { sourceDir: '/source-b', destDir: '/destination-b' });
+    insertPhoto(db, {
+      id: 'photo', jobId: populated.id, srcPath: '/source-a/photo.jpg', filename: 'photo.jpg',
+      extension: '.jpg', status: 'skipped',
+    });
+    insertDuplicate(db, {
+      id: 'duplicate', jobId: populated.id, photoId: 'photo', srcPath: '/source-a/photo.jpg',
+      similarity: 99,
+    });
+
+    assert.deepEqual(listJobsWithPhotos(db).map((job) => job.id), [populated.id]);
+    assert.deepEqual(listJobsWithDuplicates(db).map((job) => job.id), [populated.id]);
   });
 });

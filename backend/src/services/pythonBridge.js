@@ -16,7 +16,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
-const { updateJobStatus, insertPhoto, insertDuplicate, getAllSettings, getProfile } = require('../db/dao');
+const { updateJobStatus, insertPhoto, insertDuplicate, getAllSettings, getProfile, getJob } = require('../db/dao');
 const { v4: uuidv4 } = require('uuid');
 const {
   notifyJobStarted, notifyJobCompleted, notifyJobError,
@@ -112,7 +112,8 @@ function startJob(db, job) {
       if (!line.trim()) continue;
       try {
         const evt = JSON.parse(line);
-        handleEvent(db, job.id, evt);
+        const eventError = handleEvent(db, job.id, evt);
+        if (eventError) pythonErrorMessage = eventError;
       } catch {
         /* Forward non-JSON Python output to console so it appears in Docker logs */
         console.log(`[job ${job.id}] ${line}`);
@@ -200,6 +201,11 @@ function cancelJob(jobId, db) {
  * Handle a single JSON event from the Python process.
  */
 function handleEvent(db, jobId, evt) {
+  const currentJob = getJob(db, jobId);
+  if (!currentJob) return null;
+  if (currentJob.status === 'cancelled') return null;
+  if (currentJob.status === 'error' && evt.event !== 'error') return null;
+
   switch (evt.event) {
     case 'scanning': {
       const phase = evt.phase || 'scanning';
@@ -218,6 +224,15 @@ function handleEvent(db, jobId, evt) {
     }
 
     case 'progress': {
+      if (evt.message && !Number.isFinite(evt.processed)) {
+        console.log(`[job ${jobId}] ${evt.message}`);
+        break;
+      }
+      const counters = [evt.processed, evt.copied, evt.skipped, evt.errors, evt.total_files];
+      if (!counters.every(Number.isFinite)) {
+        console.warn(`[job ${jobId}] Ignoring malformed progress event`);
+        break;
+      }
       const total = evt.total_files || 0;
       const pct = total > 0 ? Math.round((evt.processed / total) * 100) : '?';
       console.log(`[job ${jobId}] Progress: ${evt.processed}/${total} (${pct}%) — copied=${evt.copied} skipped=${evt.skipped} errors=${evt.errors}`);
@@ -315,11 +330,12 @@ function handleEvent(db, jobId, evt) {
         error_message: evt.message,
         finished_at: new Date().toISOString(),
       });
-      break;
+      return evt.message || 'Python organizer error';
 
     default:
       break;
   }
+  return null;
 }
 
 /**
@@ -336,4 +352,10 @@ function getCurrentFile(jobId) {
   return currentFiles.get(jobId) || null;
 }
 
-module.exports = { startJob, cancelJob, getActiveJobIds, getCurrentFile };
+module.exports = {
+  startJob,
+  cancelJob,
+  getActiveJobIds,
+  getCurrentFile,
+  handleEvent,
+};

@@ -17,7 +17,7 @@ Status meanings:
 | CA-01 | Benchmark request fields execute as Python | Done | Replaced generated source with `benchmark_runner.py`, strict bounded JSON input, and injection regression tests. |
 | CA-04 | Unauthenticated admin/filesystem API, wildcard CORS, secret disclosure | Done | Production fails closed without Basic credentials, auth failures are throttled, CORS is removed, health alone is public, and ntfy secrets are write-only/masked. |
 | CA-03 | Source guards use the wrong scope and lexical paths | Done | Node and Python canonicalize aliases, every Python copy receives an immutable source root, override writes are guarded, cross-job overlaps are rejected, and deployment mounts sources read-only. |
-| CA-17 | Container and supply-chain hardening | Partial | Runtime is non-root with read-only root FS, dropped capabilities, `no-new-privileges`, PID limit, tmpfs, split mounts, healthcheck, and strict `npm ci`. Pin base/Python dependencies and add broader resource limits. |
+| CA-17 | Container and supply-chain hardening | Done | Runtime is non-root with read-only root FS, dropped capabilities, `no-new-privileges`, PID limit, tmpfs, split mounts, healthcheck, strict `npm ci`, digest-pinned base, pinned Python packages, and zero npm advisories. |
 
 ## P1 - Data Integrity
 
@@ -34,13 +34,13 @@ Status meanings:
 
 | ID | Finding | Status | Current work / remaining work |
 |---|---|---|---|
-| CA-09 | No restart reconciliation; engine error state can be overwritten | Pending | Formalize transitions, attempt IDs, late-event rejection, Retry, and Resume. |
-| CA-10 | Scan-only misses source-to-source duplicates | Pending | Register source records during scan and persist destination match metadata. |
-| CA-12 | Dimension filtering and RAW/custom behavior contradict UI/docs | Pending | Correct filter semantics and add real format fixtures/fallback behavior. |
-| CA-13 | Unbounded inputs, regex and parser denial of service | Partial | Benchmark values and total disk work are bounded. Add schemas/ranges across all APIs and bounded search/parsing. |
-| CA-14 | SSRF and credential forwarding | Partial | Immich integration and its API-key path were removed. Harden ntfy URL, credentials, and timeouts. |
-| CA-15 | macOS volume names enter shell commands | Pending | Replace shell strings with `execFileSync` and share drive detection. |
-| CA-16 | Repeated metadata/hash work, full materialization, N+1 queries | Pending | Consolidate per-file metadata and use bounded queues/grouped queries. |
+| CA-09 | No restart reconciliation; engine error state can be overwritten | Done | Startup reconciles interrupted jobs, Retry resets run records while preserving outputs, legal route states are enforced, descriptive errors persist, and terminal jobs ignore late events. |
+| CA-10 | Scan-only misses source-to-source duplicates | Done | Scan records are indexed under exact-content guards, including concurrent source-to-source duplicate detection. |
+| CA-12 | Dimension filtering and RAW/custom behavior contradict UI/docs | Done | Either undersized dimension now rejects; ExifTool-confirmed RAW images reuse one metadata read; non-images remain errors; fixtures cover both paths. |
+| CA-13 | Unbounded inputs, regex and parser denial of service | Done | Routes enforce key/type/range/page/batch limits, settings/profile allowlists, literal escaped search, 40 MP previews, 512 MB file limits, and bounded drive prescans. |
+| CA-14 | SSRF and credential forwarding | Done | Immich was removed; ntfy enforces HTTP(S), DNS/address blocks, timeouts, bounded errors, and clears credentials when its origin changes. |
+| CA-15 | macOS volume names enter shell commands | Done | One shared detector uses `execFileSync` argument arrays for diskutil/lsblk; hostile-volume regression coverage verifies literal arguments. |
+| CA-16 | Repeated metadata/hash work, full materialization, N+1 queries | Done | Metadata/hash results are reused, ExifTool runs once, source processing and futures are bounded, and grouped SQL replaces job-selector N+1 queries. |
 
 ## P3 - Process and UX
 

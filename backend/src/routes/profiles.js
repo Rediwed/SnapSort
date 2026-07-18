@@ -4,6 +4,8 @@
 
 const { Router } = require('express');
 const { listProfiles, getProfile, createProfile, updateProfile, deleteProfile } = require('../db/dao');
+const { validateProfile } = require('../security/profilePolicy');
+const { validateForResponse } = require('../security/validation');
 
 const router = Router();
 
@@ -21,7 +23,9 @@ router.get('/:id', (req, res) => {
 
 /* Create a custom profile */
 router.post('/', (req, res) => {
-  const profile = createProfile(req.db, req.body);
+  const validation = validateForResponse(res, () => validateProfile(req.body));
+  if (!validation.ok) return;
+  const profile = createProfile(req.db, validation.value);
   res.status(201).json(profile);
 });
 
@@ -30,7 +34,9 @@ router.patch('/:id', (req, res) => {
   const existing = getProfile(req.db, req.params.id);
   if (!existing) return res.status(404).json({ error: 'Profile not found' });
   if (existing.is_builtin) return res.status(403).json({ error: 'Cannot modify built-in profiles' });
-  const updated = updateProfile(req.db, req.params.id, req.body);
+  const validation = validateForResponse(res, () => validateProfile(req.body, { partial: true }));
+  if (!validation.ok) return;
+  const updated = updateProfile(req.db, req.params.id, validation.value);
   res.json(updated);
 });
 

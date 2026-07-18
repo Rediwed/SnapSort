@@ -30,6 +30,7 @@ export const fetchJob      = (id) => request(`/jobs/${id}`);
 export const fetchActiveJobs = () => request('/jobs/active');
 export const createJob     = (body) => request('/jobs', { method: 'POST', body: JSON.stringify(body) });
 export const startJob      = (id) => request(`/jobs/${id}/start`, { method: 'POST' });
+export const retryJob      = (id) => request(`/jobs/${id}/retry`, { method: 'POST' });
 export const cancelJob     = (id) => request(`/jobs/${id}/cancel`, { method: 'POST' });
 export const deleteJob     = (id) => request(`/jobs/${id}`, { method: 'DELETE' });
 export const deleteJobWithPhotos = (id) => request(`/jobs/${id}/photos`, { method: 'DELETE' });

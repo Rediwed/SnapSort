@@ -11,7 +11,9 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { initDb } = require('./db/schema');
+const { reconcileInterruptedJobs } = require('./db/dao');
 const { createAuthMiddleware, readAuthConfig } = require('./security/auth');
+const { boundedInteger, validateForResponse } = require('./security/validation');
 const { initLogCapture, getRecentLogs, subscribe, unsubscribe } = require('./services/logBuffer');
 const { startCpuMonitor, getCpuHistory, getCpuCurrent, getMemHistory, getMemCurrent } = require('./services/cpuMonitor');
 
@@ -24,7 +26,7 @@ const duplicateRoutes = require('./routes/duplicates');
 const settingsRoutes = require('./routes/settings');
 const dashboardRoutes = require('./routes/dashboard');
 const filesystemRoutes = require('./routes/filesystem');
-const drivesRoutes = require('./routes/drives');
+const drivesRoutes = require('./routes/drivesSafe');
 const benchmarkRoutes = require('./routes/benchmarksSafe');
 const profileRoutes = require('./routes/profiles');
 
@@ -77,6 +79,10 @@ app.use((req, res, next) => {
 /*  Database                                                           */
 /* ------------------------------------------------------------------ */
 const db = initDb(path.join(__dirname, '..', 'data', 'snapsort.db'));
+const interruptedJobs = reconcileInterruptedJobs(db);
+if (interruptedJobs > 0) {
+  console.warn(`Marked ${interruptedJobs} interrupted job(s) as errors after restart.`);
+}
 
 /* Attach db to every request so routes can access it */
 app.use((req, _res, next) => {
@@ -99,8 +105,11 @@ app.use('/api/profiles', profileRoutes);
 
 /* Recent logs — lets the web UI show backend output without SSH */
 app.get('/api/logs', (_req, res) => {
-  const limit = Math.min(Number(_req.query.limit) || 200, 500);
-  res.json(getRecentLogs(limit));
+  const validation = validateForResponse(res, () => boundedInteger(
+    _req.query.limit, 'limit', { defaultValue: 200, minimum: 1, maximum: 500 },
+  ));
+  if (!validation.ok) return;
+  res.json(getRecentLogs(validation.value));
 });
 
 /* SSE log stream — pushes new log entries to connected clients in real time */
@@ -195,7 +204,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`SnapSort listening on http://0.0.0.0:${PORT}`);
 
   /* Start drive monitor for attach/eject/lost notifications */
-  const { startDriveMonitor } = require('./services/driveMonitor');
+  const { startDriveMonitor } = require('./services/driveMonitorSafe');
   startDriveMonitor(db);
 });
 
@@ -215,7 +224,7 @@ server.on('error', (err) => {
 /* ------------------------------------------------------------------ */
 const { cancelJob, getActiveJobIds } = require('./services/pythonBridge');
 const { stopProgressTimer } = require('./services/ntfyService');
-const { stopDriveMonitor } = require('./services/driveMonitor');
+const { stopDriveMonitor } = require('./services/driveMonitorSafe');
 
 function shutdown(signal) {
   console.log(`\n🛑  Received ${signal} — shutting down gracefully…`);

@@ -401,7 +401,7 @@ export default function Photos() {
             <input
               type="text"
               className="search-input"
-              placeholder="Regex search filenames…"
+              placeholder="Search filenames…"
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               spellCheck={false}

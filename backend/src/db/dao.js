@@ -57,6 +57,35 @@ function deleteJob(db, id) {
   db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
 }
 
+function reconcileInterruptedJobs(db) {
+  const finishedAt = new Date().toISOString();
+  const result = db.prepare(`
+    UPDATE jobs
+    SET status = 'error',
+        error_message = 'Interrupted by server restart',
+        finished_at = ?
+    WHERE status IN ('running', 'overriding')
+  `).run(finishedAt);
+  return result.changes;
+}
+
+function resetJobForRetry(db, id) {
+  const transaction = db.transaction(() => {
+    const job = getJob(db, id);
+    if (!job) return null;
+    db.prepare('DELETE FROM photos WHERE job_id = ?').run(id);
+    db.prepare(`
+      UPDATE jobs
+      SET status = 'pending', processed = 0, copied = 0, skipped = 0,
+          scanned = 0, errors = 0, total_files = 0, total_bytes = 0,
+          error_message = NULL, started_at = NULL, finished_at = NULL
+      WHERE id = ?
+    `).run(id);
+    return getJob(db, id);
+  });
+  return transaction();
+}
+
 function listPhotoPaths(db, jobId) {
   return db.prepare(
     "SELECT dest_path FROM photos WHERE job_id = ? AND dest_path IS NOT NULL AND status = 'copied' AND output_owned = 1"
@@ -124,7 +153,11 @@ function listPhotos(db, { jobId, status, isDuplicate, resolution, search, limit 
     WHERE 1=1`;
   const params = [];
   if (jobId) { sql += ' AND p.job_id = ?'; params.push(jobId); }
-  if (search) { sql += ' AND (p.filename REGEXP ? OR p.src_path REGEXP ?)'; params.push(search, search); }
+  if (search) {
+    const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+    sql += " AND (p.filename LIKE ? ESCAPE '\\' COLLATE NOCASE OR p.src_path LIKE ? ESCAPE '\\' COLLATE NOCASE)";
+    params.push(pattern, pattern);
+  }
   if (isDuplicate === 'true') {
     sql += ' AND d.id IS NOT NULL';
     if (resolution) { sql += ' AND COALESCE(d.resolution, \'undecided\') = ?'; params.push(resolution); }
@@ -145,7 +178,11 @@ function countPhotos(db, { jobId, status, isDuplicate, resolution, search } = {}
     WHERE 1=1`;
   const params = [];
   if (jobId) { sql += ' AND p.job_id = ?'; params.push(jobId); }
-  if (search) { sql += ' AND (p.filename REGEXP ? OR p.src_path REGEXP ?)'; params.push(search, search); }
+  if (search) {
+    const pattern = `%${search.replace(/[\\%_]/g, '\\$&')}%`;
+    sql += " AND (p.filename LIKE ? ESCAPE '\\' COLLATE NOCASE OR p.src_path LIKE ? ESCAPE '\\' COLLATE NOCASE)";
+    params.push(pattern, pattern);
+  }
   if (isDuplicate === 'true') {
     sql += ' AND d.id IS NOT NULL';
     if (resolution) { sql += ' AND COALESCE(d.resolution, \'undecided\') = ?'; params.push(resolution); }
@@ -160,6 +197,20 @@ function countPhotos(db, { jobId, status, isDuplicate, resolution, search } = {}
 
 function getPhoto(db, id) {
   return db.prepare('SELECT * FROM photos WHERE id = ?').get(id) || null;
+}
+
+function listJobsWithPhotos(db, limit = 500) {
+  return db.prepare(`
+    SELECT j.*, counts.photo_count
+    FROM jobs j
+    INNER JOIN (
+      SELECT job_id, COUNT(*) AS photo_count
+      FROM photos
+      GROUP BY job_id
+    ) counts ON counts.job_id = j.id
+    ORDER BY j.created_at DESC
+    LIMIT ?
+  `).all(limit);
 }
 
 /* ================================================================== */
@@ -207,6 +258,20 @@ function countDuplicates(db, { jobId, resolution } = {}) {
   if (jobId) { sql += ' AND job_id = ?'; params.push(jobId); }
   if (resolution) { sql += ' AND COALESCE(resolution, \'undecided\') = ?'; params.push(resolution); }
   return db.prepare(sql).get(...params).count;
+}
+
+function listJobsWithDuplicates(db, limit = 500) {
+  return db.prepare(`
+    SELECT j.*, counts.duplicate_count
+    FROM jobs j
+    INNER JOIN (
+      SELECT job_id, COUNT(*) AS duplicate_count
+      FROM duplicates
+      GROUP BY job_id
+    ) counts ON counts.job_id = j.id
+    ORDER BY j.created_at DESC
+    LIMIT ?
+  `).all(limit);
 }
 
 /* ================================================================== */
@@ -360,10 +425,12 @@ function getDashboardStats(db) {
 }
 
 module.exports = {
-  createJob, getJob, listJobs, updateJobStatus, deleteJob, listSourceDirs, listDestinationDirs,
-  insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths, countProtectedPhotoPaths,
+  createJob, getJob, listJobs, updateJobStatus, deleteJob,
+  reconcileInterruptedJobs, resetJobForRetry, listSourceDirs, listDestinationDirs,
+  insertPhoto, listPhotos, countPhotos, getPhoto, listJobsWithPhotos, listPhotoPaths, countProtectedPhotoPaths,
   getPhotosByIds, updatePhotoOverride, markPhotoCopied,
-  insertDuplicate, listDuplicates, resolveDuplicate, recordDuplicateResolution, getDuplicate, countDuplicates,
+  insertDuplicate, listDuplicates, resolveDuplicate, recordDuplicateResolution,
+  getDuplicate, countDuplicates, listJobsWithDuplicates,
   getAllSettings, getSetting, upsertSetting, bulkUpsertSettings,
   listProfiles, getProfile, createProfile, updateProfile, deleteProfile,
   getDashboardStats,

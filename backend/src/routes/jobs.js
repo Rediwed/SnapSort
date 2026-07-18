@@ -8,6 +8,7 @@ const path = require('path');
 const {
   createJob, getJob, listJobs, updateJobStatus, deleteJob,
   countProtectedPhotoPaths, getPhotosByIds, listPhotoPaths, markPhotoCopied,
+  resetJobForRetry,
 } = require('../db/dao');
 const { startJob, cancelJob, getActiveJobIds, getCurrentFile } = require('../services/pythonBridge');
 const { assertNotInSource } = require('../sourceGuard');
@@ -18,6 +19,9 @@ const {
   validateNewJobPaths,
 } = require('../services/jobPathSafety');
 const { installNewFile } = require('../services/atomicFile');
+const {
+  boundedInteger, boundedString, enumValue, idArray, validateForResponse,
+} = require('../security/validation');
 
 const router = Router();
 const overrideLocks = new Set();
@@ -25,10 +29,16 @@ const overrideLocks = new Set();
 /* List jobs (optional ?status=running&limit=20&offset=0) */
 router.get('/', (req, res) => {
   const { status, limit, offset } = req.query;
+  const validation = validateForResponse(res, () => ({
+    status: status === undefined
+      ? undefined
+      : enumValue(status, 'status', ['pending', 'running', 'overriding', 'done', 'error', 'cancelled']),
+    limit: boundedInteger(limit, 'limit', { defaultValue: 50, minimum: 1, maximum: 500 }),
+    offset: boundedInteger(offset, 'offset', { defaultValue: 0, minimum: 0, maximum: 1_000_000 }),
+  }));
+  if (!validation.ok) return;
   const jobs = listJobs(req.db, {
-    status,
-    limit: limit ? Number(limit) : 50,
-    offset: offset ? Number(offset) : 0,
+    ...validation.value,
   });
   res.json(jobs);
 });
@@ -102,7 +112,18 @@ router.get('/:id', (req, res) => {
 
 /* Create a new job */
 router.post('/', (req, res) => {
-  const { name, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile } = req.body;
+  const validation = validateForResponse(res, () => ({
+    name: boundedString(req.body?.name, 'name', { maximum: 100 }),
+    sourceDir: boundedString(req.body?.sourceDir, 'sourceDir', { required: true, maximum: 4096 }),
+    destDir: boundedString(req.body?.destDir, 'destDir', { required: true, maximum: 4096 }),
+    mode: enumValue(req.body?.mode, 'mode', ['normal', 'scan'], 'normal'),
+    minWidth: boundedInteger(req.body?.minWidth, 'minWidth', { defaultValue: 600, minimum: 0, maximum: 100000 }),
+    minHeight: boundedInteger(req.body?.minHeight, 'minHeight', { defaultValue: 600, minimum: 0, maximum: 100000 }),
+    minFilesize: boundedInteger(req.body?.minFilesize, 'minFilesize', { defaultValue: 51200, minimum: 0, maximum: 1024 * 1024 * 1024 * 1024 }),
+    performanceProfile: boundedString(req.body?.performanceProfile, 'performanceProfile', { maximum: 100 }) || null,
+  }));
+  if (!validation.ok) return;
+  const { name, sourceDir, destDir, mode, minWidth, minHeight, minFilesize, performanceProfile } = validation.value;
   if (!sourceDir || !destDir) {
     return res.status(400).json({ error: 'sourceDir and destDir are required' });
   }
@@ -132,7 +153,9 @@ router.post('/', (req, res) => {
 router.post('/:id/start', (req, res) => {
   const job = getJob(req.db, req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
-  if (job.status === 'running') return res.status(409).json({ error: 'Job already running' });
+  if (job.status !== 'pending') {
+    return res.status(409).json({ error: 'Only pending jobs can be started' });
+  }
 
   /* Validate paths are accessible inside the container before spawning Python */
   if (!fs.existsSync(job.source_dir)) {
@@ -158,10 +181,23 @@ router.post('/:id/start', (req, res) => {
   res.json(updated);
 });
 
+/* Reset an interrupted/cancelled job; copied destination files remain for dedup seeding. */
+router.post('/:id/retry', (req, res) => {
+  const job = getJob(req.db, req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (!['error', 'cancelled'].includes(job.status)) {
+    return res.status(409).json({ error: 'Only failed or cancelled jobs can be retried' });
+  }
+  res.json(resetJobForRetry(req.db, job.id));
+});
+
 /* Cancel a running job */
 router.post('/:id/cancel', (req, res) => {
   const job = getJob(req.db, req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.status !== 'running' || !getActiveJobIds().includes(job.id)) {
+    return res.status(409).json({ error: 'Job is not actively running' });
+  }
 
   cancelJob(job.id);
   const updated = updateJobStatus(req.db, job.id, 'cancelled', {
@@ -248,10 +284,9 @@ router.post('/:id/override', async (req, res) => {
   if (!job) return res.status(404).json({ error: 'Job not found' });
   if (job.status !== 'done') return res.status(409).json({ error: 'Can only override a completed job' });
 
-  const { photoIds } = req.body;
-  if (!Array.isArray(photoIds) || photoIds.length === 0) {
-    return res.status(400).json({ error: 'photoIds array is required' });
-  }
+  const validation = validateForResponse(res, () => idArray(req.body?.photoIds, 'photoIds'));
+  if (!validation.ok) return;
+  const photoIds = validation.value;
 
   /* Fetch the selected photos & validate they are skipped or scanned */
   const photos = getPhotosByIds(req.db, photoIds);

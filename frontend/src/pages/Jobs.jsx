@@ -4,10 +4,10 @@ import Badge from '../components/Badge';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import FilePicker from '../components/FilePicker';
-import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles, fetchSettings } from '../api';
+import { fetchJobs, createJob, startJob, retryJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles, fetchSettings } from '../api';
 import { FlaskConical, Zap, RefreshCw, Disc, Trash2, AlertTriangle } from 'lucide-react';
 
-const statusVariant = { pending: 'orange', running: 'accent', overriding: 'cyan', done: 'green', error: 'red' };
+const statusVariant = { pending: 'orange', running: 'accent', overriding: 'cyan', done: 'green', error: 'red', cancelled: 'orange' };
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
@@ -131,7 +131,12 @@ export default function Jobs() {
         <div className="flex gap-8" onClick={(e) => e.stopPropagation()}>
           {r.status === 'pending' && <button className="btn sm primary" onClick={() => startJob(r.id).then(load).catch((e) => { alert(e.message); load(); })}>Start</button>}
           {r.status === 'running' && <button className="btn sm danger" onClick={() => cancelJob(r.id).then(load)}>Cancel</button>}
-          {['done', 'error'].includes(r.status) && <button className="btn sm danger" onClick={() => setDeleteTarget(r)}>Delete</button>}
+          {['error', 'cancelled'].includes(r.status) && (
+            <button className="btn sm primary" onClick={() => retryJob(r.id).then(() => startJob(r.id)).then(load).catch((e) => { alert(e.message); load(); })}>
+              Retry
+            </button>
+          )}
+          {['done', 'error', 'cancelled'].includes(r.status) && <button className="btn sm danger" onClick={() => setDeleteTarget(r)}>Delete</button>}
         </div>
       ),
     },

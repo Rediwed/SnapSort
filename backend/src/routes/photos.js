@@ -4,40 +4,40 @@
 
 const { Router } = require('express');
 const sharp = require('sharp');
-const { listPhotos, countPhotos, getPhoto, getJob, listJobs } = require('../db/dao');
+const { listPhotos, countPhotos, getPhoto, getJob, listJobsWithPhotos } = require('../db/dao');
 const {
   METADATA_EXTENSIONS,
   PREVIEW_EXTENSIONS,
   UnsafePhotoFileError,
   resolvePhotoFile,
 } = require('../services/safePhotoFile');
+const { boundedInteger, boundedString, enumValue, validateForResponse } = require('../security/validation');
 
 const router = Router();
 
 /* List photos with optional filters */
 router.get('/', (req, res) => {
   const { jobId, status, isDuplicate, resolution, search, limit, offset } = req.query;
+  const validation = validateForResponse(res, () => ({
+    jobId: boundedString(jobId, 'jobId', { maximum: 100 }),
+    status: status === undefined ? undefined : enumValue(status, 'status', ['pending', 'copied', 'skipped', 'scanned', 'error']),
+    isDuplicate: isDuplicate === undefined ? undefined : enumValue(isDuplicate, 'isDuplicate', ['true', 'false']),
+    resolution: resolution === undefined ? undefined : enumValue(resolution, 'resolution', ['undecided', 'ignore', 'keep_overwrite', 'keep_rename']),
+    search: boundedString(search, 'search', { maximum: 200 }),
+    limit: boundedInteger(limit, 'limit', { defaultValue: 100, minimum: 1, maximum: 500 }),
+    offset: boundedInteger(offset, 'offset', { defaultValue: 0, minimum: 0, maximum: 1_000_000 }),
+  }));
+  if (!validation.ok) return;
   const photos = listPhotos(req.db, {
-    jobId,
-    status,
-    isDuplicate,
-    resolution,
-    search: search || undefined,
-    limit: limit ? Number(limit) : 100,
-    offset: offset ? Number(offset) : 0,
+    ...validation.value,
   });
-  const total = countPhotos(req.db, { jobId, status, isDuplicate, resolution, search: search || undefined });
+  const total = countPhotos(req.db, validation.value);
   res.json({ photos, total });
 });
 
 /* List all jobs that have photos (for the job dropdown) */
 router.get('/jobs', (req, res) => {
-  const jobs = listJobs(req.db, { limit: 500 });
-  // Only return jobs that actually have photos
-  const jobsWithPhotos = jobs.filter((j) => {
-    const count = countPhotos(req.db, { jobId: j.id });
-    return count > 0;
-  }).map((j) => ({
+  const jobsWithPhotos = listJobsWithPhotos(req.db).map((j) => ({
     id: j.id,
     source_dir: j.source_dir,
     dest_dir: j.dest_dir,

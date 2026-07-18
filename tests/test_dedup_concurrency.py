@@ -9,7 +9,7 @@ from pathlib import Path
 from PIL import Image
 
 from dedup_utils import DeduplicationIndex
-from photo_organizer import file_hash_fast, process_single_file
+from photo_organizer import file_hash_fast, process_single_file, scan_single_file
 
 
 class DedupConcurrencyTest(unittest.TestCase):
@@ -83,6 +83,33 @@ class DedupConcurrencyTest(unittest.TestCase):
             ]
             self.assertEqual(statuses, ["copied", "skipped"])
             self.assertEqual(len(copied_files), 1)
+
+    def test_scan_only_detects_source_to_source_duplicates(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            first = Path(temp_root) / "first" / "same.jpg"
+            second = Path(temp_root) / "second" / "same.jpg"
+            first.parent.mkdir()
+            second.parent.mkdir()
+            Image.new("RGB", (800, 800), "green").save(first)
+            second.write_bytes(first.read_bytes())
+            timestamp = 1_700_000_000
+            os.utime(first, (timestamp, timestamp))
+            os.utime(second, (timestamp, timestamp))
+            index = DeduplicationIndex(strict_threshold=90, log_threshold=70)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(
+                    lambda file_path: scan_single_file(str(file_path), file_hash_fast, index),
+                    (first, second),
+                ))
+
+            duplicate_results = [result for result in results if result["similarity"] is not None]
+            self.assertEqual(len(duplicate_results), 1)
+            self.assertGreaterEqual(duplicate_results[0]["similarity"], 90)
+            self.assertIn(
+                duplicate_results[0]["duplicate_of"],
+                {str(first), str(second)},
+            )
 
 
 if __name__ == "__main__":

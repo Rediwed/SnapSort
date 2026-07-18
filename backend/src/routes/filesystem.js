@@ -9,6 +9,7 @@ const { Router } = require('express');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { boundedString, enumValue, validateForResponse } = require('../security/validation');
 
 const router = Router();
 
@@ -20,8 +21,15 @@ const router = Router();
  * Only returns directories by default; pass ?files=true to include files.
  */
 router.get('/browse', (req, res) => {
-  const dir = req.query.dir || os.homedir();
-  const includeFiles = req.query.files === 'true';
+  const validation = validateForResponse(res, () => ({
+    dir: boundedString(req.query.dir, 'dir', { maximum: 4096 }) || os.homedir(),
+    files: req.query.files === undefined
+      ? 'false'
+      : enumValue(req.query.files, 'files', ['true', 'false']),
+  }));
+  if (!validation.ok) return;
+  const dir = validation.value.dir;
+  const includeFiles = validation.value.files === 'true';
 
   try {
     if (!fs.existsSync(dir)) {

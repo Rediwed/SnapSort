@@ -16,6 +16,7 @@ import piexif
 from PIL import Image
 
 JPEG_TIFF_EXTENSIONS = (".jpg", ".jpeg", ".tif", ".tiff")
+Image.MAX_IMAGE_PIXELS = 40_000_000
 COPY_CHUNK_SIZE = 1024 * 1024
 MAX_COLLISION_ATTEMPTS = 10000
 _destination_locks = {}
@@ -153,11 +154,10 @@ def get_date_taken_from_str(date_str):
         return None
 
 
-def extract_date_taken(src_path):
+def extract_date_taken(src_path, exiftool_dict=None):
     """Extract the date when the photo was taken from the image file."""
     ext = os.path.splitext(src_path)[1].lower()
     exif_dict = None
-    exiftool_dict = None
     date_taken: Optional[datetime] = None
 
     if ext in JPEG_TIFF_EXTENSIONS:
@@ -171,9 +171,9 @@ def extract_date_taken(src_path):
                     exif_dict = None
         except Exception:
             exif_dict = None
-        if not exif_dict:
+        if not exif_dict and exiftool_dict is None:
             exiftool_dict = get_exif_with_exiftool(src_path)
-    else:
+    elif exiftool_dict is None:
         exiftool_dict = get_exif_with_exiftool(src_path)
 
     if exif_dict and "Exif" in exif_dict:
@@ -250,6 +250,7 @@ def _copy_photo_with_metadata_impl(
     dedup_index=None,
     copy_semaphore=None,
     source_root=None,
+    metadata_out=None,
 ):
     """Copy a photo to the destination directory with metadata extraction and renaming.
 
@@ -259,6 +260,17 @@ def _copy_photo_with_metadata_impl(
     """
     width = None
     height = None
+    exiftool_metadata = None
+    src_path = os.fspath(src_path)
+    dest_dir = os.fspath(dest_dir)
+    if source_root is not None:
+        source_root = os.fspath(source_root)
+    if metadata_out is None:
+        metadata_out = {}
+    try:
+        metadata_out["file_size"] = os.path.getsize(src_path)
+    except OSError:
+        metadata_out["file_size"] = 0
 
     # ── Source-safety check: source and destination must be completely disjoint ──
     from path_utils import canonicalize_path, path_is_within, paths_overlap
@@ -325,7 +337,7 @@ def _copy_photo_with_metadata_impl(
                     log_csv_func("skipped", "system/app folder", src_path)
                 return "skipped", None
 
-        if os.path.getsize(src_path) < min_file_size:
+        if metadata_out["file_size"] < min_file_size:
             log_message_func(f"Skipped (file too small): {src_path}")
             if enable_csv_log:
                 log_csv_func("skipped", "file too small", src_path)
@@ -334,7 +346,12 @@ def _copy_photo_with_metadata_impl(
         try:
             with Image.open(src_path) as img:
                 width, height = img.size
-                if width < min_width and height < min_height:
+                dpi_value = (img.info or {}).get("dpi")
+                if dpi_value and isinstance(dpi_value, (tuple, list)):
+                    metadata_out["dpi"] = int(round(dpi_value[0]))
+                metadata_out["width"] = width
+                metadata_out["height"] = height
+                if width < min_width or height < min_height:
                     log_message_func(f"Skipped (resolution too small): {src_path}")
                     if enable_csv_log:
                         log_csv_func(
@@ -344,12 +361,29 @@ def _copy_photo_with_metadata_impl(
                         )
                     return "skipped", None
         except Exception:
-            log_message_func(f"Error (cannot open image): {src_path}")
-            if enable_csv_log:
-                log_csv_func("error", "cannot open image", src_path)
-            return "error", None
+            exiftool_metadata = get_exif_with_exiftool(src_path)
+            try:
+                width = int(exiftool_metadata.get("ImageWidth"))
+                height = int(exiftool_metadata.get("ImageHeight"))
+                metadata_out["width"] = width
+                metadata_out["height"] = height
+            except (AttributeError, TypeError, ValueError):
+                log_message_func(f"Error (cannot open image): {src_path}")
+                if enable_csv_log:
+                    log_csv_func("error", "cannot open image", src_path)
+                return "error", None
+            if width < min_width or height < min_height:
+                log_message_func(f"Skipped (resolution too small): {src_path}")
+                if enable_csv_log:
+                    log_csv_func(
+                        "skipped",
+                        f"resolution too small ({width}x{height})",
+                        src_path,
+                    )
+                return "skipped", None
 
-    date_taken = extract_date_taken(src_path)
+    date_taken = extract_date_taken(src_path, exiftool_metadata)
+    metadata_out["date_taken"] = date_taken.isoformat() if date_taken else None
     if not date_taken:
         log_message_func(f"Skipped (no valid date): {src_path}")
         if enable_csv_log:
@@ -382,6 +416,7 @@ def _copy_photo_with_metadata_impl(
         if dedup_record:
             dedup_score, dedup_match = dedup_index.find_best_match(dedup_record)
             dedup_record["similarity"] = dedup_score
+            metadata_out["hash"] = dedup_record.get("partial_hash")
             if dedup_match:
                 dedup_record["matched_record_id"] = dedup_match.get("_id")
                 dedup_record["matched_src_path"] = dedup_match.get("src_path")
@@ -479,6 +514,7 @@ def copy_photo_with_metadata(
     dedup_index=None,
     copy_semaphore=None,
     source_root=None,
+    metadata_out=None,
 ):
     """Run match, copy, and index registration under an exact-content guard."""
     if dedup_index is None:
@@ -497,6 +533,7 @@ def copy_photo_with_metadata(
             force_copy=force_copy,
             copy_semaphore=copy_semaphore,
             source_root=source_root,
+            metadata_out=metadata_out,
         )
 
     with dedup_index.copy_guard(src_path):
@@ -516,4 +553,5 @@ def copy_photo_with_metadata(
             dedup_index=dedup_index,
             copy_semaphore=copy_semaphore,
             source_root=source_root,
+            metadata_out=metadata_out,
         )
