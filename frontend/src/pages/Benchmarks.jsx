@@ -287,7 +287,7 @@ export default function Benchmarks() {
                   <StatCard label="Dest Write"     value={`${r.dest_write_mbps} MB/s`}     variant="accent" />
                   <StatCard label="Copy Speed"     value={`${r.copy_mbps} MB/s`}           variant="green" sub="Source → Destination" />
                   <StatCard label="Hash (parallel)" value={`${r.hash_parallel_mbps} MB/s`} variant="pink" sub={`${r.hash_workers} workers · ${r.parallel_speedup}× vs single-thread`} />
-                  <StatCard label="Destination Test Data" value={formatBytes(r.dest_bytes || r.total_bytes)} variant="orange" sub={`${r.file_count} × ${r.file_size_mb} MB · ${r.cpu_count} CPU cores`} />
+                  <StatCard label="Destination Test Data" value={formatBytes(r.dest_bytes || r.total_bytes)} variant="orange" sub={`${r.source_sample_count || r.file_count} source samples · ${r.cpu_count} CPU cores`} />
                 </div>
 
                 {/* ---- Bottleneck analysis ---- */}

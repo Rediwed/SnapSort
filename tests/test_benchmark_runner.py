@@ -6,6 +6,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import benchmark_runner
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -44,19 +47,27 @@ class BenchmarkRunnerTest(unittest.TestCase):
             destination.mkdir()
             (source / "sample.bin").write_bytes(os.urandom(1024 * 1024))
             before = tree_snapshot(source)
+            source.chmod(0o555)
+            (source / "sample.bin").chmod(0o444)
 
-            completed, events = self.run_benchmark({
-                "source_dir": str(source),
-                "dest_dir": str(destination),
-                "file_count": 1,
-                "file_size_mb": 1,
-            })
+            try:
+                completed, events = self.run_benchmark({
+                    "source_dir": str(source),
+                    "dest_dir": str(destination),
+                    "file_count": 1,
+                    "file_size_mb": 1,
+                })
+            finally:
+                source.chmod(0o755)
+                (source / "sample.bin").chmod(0o644)
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertEqual(tree_snapshot(source), before)
             self.assertEqual(list(destination.iterdir()), [])
             summary = next(event for event in events if event.get("event") == "summary")
             self.assertEqual(summary["copy_bytes"], 1024 * 1024)
+            self.assertEqual(summary["source_bytes"], summary["dest_bytes"])
+            self.assertEqual(summary["source_bytes"], summary["copy_bytes"])
             self.assertIn(summary["bottleneck"], {"source", "destination", "pipeline", "cpu"})
             self.assertNotIn("source_write_mbps", summary)
 
@@ -77,6 +88,57 @@ class BenchmarkRunnerTest(unittest.TestCase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertEqual(events[-1]["event"], "error")
             self.assertIn("file_count must be an integer", events[-1]["message"])
+
+    def test_benchmark_rejects_symlink_overlap(self):
+        if sys.platform == "win32":
+            self.skipTest("Symlink creation requires elevated privileges on Windows")
+        with tempfile.TemporaryDirectory() as temp_root:
+            source = Path(temp_root) / "source"
+            source.mkdir()
+            alias = Path(temp_root) / "source-alias"
+            alias.symlink_to(source, target_is_directory=True)
+
+            completed, events = self.run_benchmark({
+                "source_dir": str(source),
+                "dest_dir": str(alias),
+                "file_count": 1,
+                "file_size_mb": 1,
+            })
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("disjoint folders", events[-1]["message"])
+
+    def test_interruption_cleans_destination_temp_directory(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            source = Path(temp_root) / "source"
+            destination = Path(temp_root) / "destination"
+            source.mkdir()
+            destination.mkdir()
+            source_file = source / "sample.bin"
+            source_file.write_bytes(b"sample")
+            config = benchmark_runner.parse_config({
+                "source_dir": str(source),
+                "dest_dir": str(destination),
+                "file_count": 1,
+                "file_size_mb": 1,
+            })
+
+            with mock.patch.object(benchmark_runner, "emit"), mock.patch.object(
+                benchmark_runner, "read_sample", side_effect=KeyboardInterrupt
+            ):
+                with self.assertRaises(KeyboardInterrupt):
+                    benchmark_runner.run_benchmark(config)
+
+            self.assertEqual(list(destination.iterdir()), [])
+
+    def test_throughput_and_profile_boundaries(self):
+        self.assertEqual(benchmark_runner.throughput_mb_per_second(10 * 1024 * 1024, 2), 5)
+        self.assertEqual(benchmark_runner.suggested_profile_for(2001), "nvme_gen4")
+        self.assertEqual(benchmark_runner.suggested_profile_for(801), "nvme_gen3")
+        self.assertEqual(benchmark_runner.suggested_profile_for(301), "sata_ssd")
+        self.assertEqual(benchmark_runner.suggested_profile_for(101), "hdd_7200rpm")
+        self.assertEqual(benchmark_runner.suggested_profile_for(41), "hdd_5400rpm")
+        self.assertEqual(benchmark_runner.suggested_profile_for(40), "usb_external")
 
 
 if __name__ == "__main__":

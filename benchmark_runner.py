@@ -37,13 +37,15 @@ def parse_integer(config, key, default, maximum):
     return value
 
 
-def canonical_directory(config, key):
+def canonical_directory(config, key, access_mode):
     value = config.get(key)
     if not isinstance(value, str) or not value.strip():
         raise BenchmarkError(f"{key} is required")
-    canonical_path = os.path.realpath(value)
+    canonical_path = os.path.normcase(os.path.realpath(value))
     if not os.path.isdir(canonical_path):
         raise BenchmarkError(f"{key} is not an accessible directory")
+    if not os.access(canonical_path, access_mode):
+        raise BenchmarkError(f"{key} is not accessible with the required permissions")
     return canonical_path
 
 
@@ -64,8 +66,12 @@ def parse_config(raw_config):
     if file_count * file_size_mb > MAX_TOTAL_MB:
         raise BenchmarkError(f"Benchmark data must not exceed {MAX_TOTAL_MB} MB")
 
-    source_dir = canonical_directory(raw_config, "source_dir")
-    dest_dir = canonical_directory(raw_config, "dest_dir")
+    source_dir = canonical_directory(raw_config, "source_dir", os.R_OK | os.X_OK)
+    dest_dir = canonical_directory(
+        raw_config,
+        "dest_dir",
+        os.R_OK | os.W_OK | os.X_OK,
+    )
     if paths_overlap(source_dir, dest_dir):
         raise BenchmarkError("Source and destination must be disjoint folders")
 
@@ -77,9 +83,8 @@ def parse_config(raw_config):
     }
 
 
-def collect_source_samples(source_dir, file_count, byte_limit):
+def collect_source_samples(source_dir, file_count, per_file_limit):
     samples = []
-    remaining = byte_limit
 
     for root, directories, filenames in os.walk(source_dir, followlinks=False):
         directories[:] = sorted(
@@ -98,10 +103,9 @@ def collect_source_samples(source_dir, file_count, byte_limit):
             if file_size <= 0:
                 continue
 
-            sample_size = min(file_size, remaining)
+            sample_size = min(file_size, per_file_limit)
             samples.append((file_path, sample_size))
-            remaining -= sample_size
-            if len(samples) >= file_count or remaining <= 0:
+            if len(samples) >= file_count:
                 return samples
 
     return samples
@@ -149,14 +153,15 @@ def throughput_mb_per_second(byte_count, elapsed):
     return (byte_count / (1024 * 1024)) / elapsed
 
 
-def create_destination_files(bench_dir, file_count, file_size):
-    chunk_size = min(READ_CHUNK_SIZE, file_size)
-    pool_size = min(RANDOM_CHUNK_COUNT, max(1, math.ceil(file_size / chunk_size)))
+def create_destination_files(bench_dir, file_sizes):
+    largest_file = max(file_sizes)
+    chunk_size = min(READ_CHUNK_SIZE, largest_file)
+    pool_size = min(RANDOM_CHUNK_COUNT, max(1, math.ceil(largest_file / chunk_size)))
     random_chunks = [os.urandom(chunk_size) for _ in range(pool_size)]
     test_files = []
 
     started_at = time.perf_counter()
-    for file_index in range(file_count):
+    for file_index, file_size in enumerate(file_sizes):
         file_path = os.path.join(bench_dir, f"write_{file_index:04d}.dat")
         with open(file_path, "xb") as test_file:
             written = 0
@@ -193,9 +198,7 @@ def run_benchmark(config):
     file_count = config["file_count"]
     file_size_mb = config["file_size_mb"]
     file_size = file_size_mb * 1024 * 1024
-    target_bytes = file_count * file_size
-
-    samples = collect_source_samples(source_dir, file_count, target_bytes)
+    samples = collect_source_samples(source_dir, file_count, file_size)
     if not samples:
         raise BenchmarkError("Source directory contains no readable, non-empty files")
 
@@ -208,12 +211,9 @@ def run_benchmark(config):
         source_read_time = time.perf_counter() - source_started
         emit({"event": "phase", "phase": "source_read", "time": round(source_read_time, 4)})
 
-        test_files, dest_write_time = create_destination_files(
-            bench_dir,
-            file_count,
-            file_size,
-        )
-        dest_bytes = file_count * file_size
+        sample_sizes = [sample_size for _, sample_size in samples]
+        test_files, dest_write_time = create_destination_files(bench_dir, sample_sizes)
+        dest_bytes = sum(sample_sizes)
         emit({"event": "phase", "phase": "dest_write", "time": round(dest_write_time, 4)})
 
         copy_started = time.perf_counter()
@@ -273,7 +273,8 @@ def run_benchmark(config):
 
         emit({
             "event": "summary",
-            "file_count": file_count,
+            "file_count": len(samples),
+            "requested_file_count": file_count,
             "file_size_mb": file_size_mb,
             "source_sample_count": len(samples),
             "source_bytes": source_bytes,

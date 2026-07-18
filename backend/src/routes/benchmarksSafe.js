@@ -8,6 +8,7 @@
 const { Router } = require('express');
 const { spawn } = require('child_process');
 const path = require('path');
+const { StringDecoder } = require('string_decoder');
 const { v4: uuidv4 } = require('uuid');
 const {
   BenchmarkValidationError,
@@ -74,7 +75,6 @@ router.post('/', (req, res) => {
     error: null,
   };
   benchmarkRuns.set(id, run);
-  res.status(201).json({ id, status: 'running' });
 
   const engineDir = path.join(__dirname, '..', '..', '..');
   const runnerPath = path.join(engineDir, 'benchmark_runner.py');
@@ -86,17 +86,15 @@ router.post('/', (req, res) => {
     run.status = 'error';
     run.error = `Failed to start benchmark runner: ${error.message}`;
     run.finishedAt = new Date().toISOString();
-    return;
+    return res.status(500).json({ error: run.error });
   }
 
   activeChildren.set(id, child);
-  const timeout = setTimeout(() => {
-    run.error = `Benchmark exceeded ${MAX_RUNTIME_MS / 60000} minutes`;
-    child.kill('SIGTERM');
-  }, MAX_RUNTIME_MS);
-  timeout.unref();
+  let timeout = null;
 
   let buffer = '';
+  const stdoutDecoder = new StringDecoder('utf8');
+  const stderrDecoder = new StringDecoder('utf8');
   const processLine = (line) => {
     if (!line.trim()) return;
     appendOutput(run, line);
@@ -110,14 +108,31 @@ router.post('/', (req, res) => {
   };
 
   child.stdout.on('data', (chunk) => {
-    buffer += chunk.toString();
+    buffer += stdoutDecoder.write(chunk);
     const lines = buffer.split('\n');
     buffer = lines.pop();
     for (const line of lines) processLine(line);
   });
 
   child.stderr.on('data', (chunk) => {
-    appendOutput(run, `STDERR: ${chunk.toString().trimEnd()}`);
+    const message = stderrDecoder.write(chunk).trimEnd();
+    if (message) appendOutput(run, `STDERR: ${message}`);
+  });
+
+  child.once('spawn', () => {
+    timeout = setTimeout(() => {
+      run.error = `Benchmark exceeded ${MAX_RUNTIME_MS / 60000} minutes`;
+      child.kill('SIGTERM');
+    }, MAX_RUNTIME_MS);
+    timeout.unref();
+
+    child.stdin.end(JSON.stringify({
+      source_dir: config.sourcePath,
+      dest_dir: config.destPath,
+      file_count: config.fileCount,
+      file_size_mb: config.fileSizeMB,
+    }));
+    res.status(201).json({ id, status: 'running' });
   });
 
   child.on('error', (error) => {
@@ -126,13 +141,17 @@ router.post('/', (req, res) => {
     run.status = 'error';
     run.error = `Failed to start benchmark runner: ${error.message}`;
     run.finishedAt = new Date().toISOString();
+    if (!res.headersSent) res.status(500).json({ error: run.error });
   });
 
   child.on('close', (code) => {
     clearTimeout(timeout);
     activeChildren.delete(id);
+    buffer += stdoutDecoder.end();
     if (buffer.trim()) processLine(buffer);
-    run.status = code === 0 && run.results ? 'done' : 'error';
+    const trailingError = stderrDecoder.end().trimEnd();
+    if (trailingError) appendOutput(run, `STDERR: ${trailingError}`);
+    run.status = code === 0 && run.results && !run.error ? 'done' : 'error';
     run.finishedAt = new Date().toISOString();
     if (run.status === 'error' && !run.error) {
       run.error = code === 0 ? 'Benchmark produced no summary' : `Process exited with code ${code}`;
@@ -141,14 +160,9 @@ router.post('/', (req, res) => {
 
   child.stdin.on('error', (error) => {
     run.error = `Failed to send benchmark config: ${error.message}`;
+    run.status = 'error';
     child.kill('SIGTERM');
   });
-  child.stdin.end(JSON.stringify({
-    source_dir: config.sourcePath,
-    dest_dir: config.destPath,
-    file_count: config.fileCount,
-    file_size_mb: config.fileSizeMB,
-  }));
 });
 
 router.get('/', (_req, res) => {

@@ -27,7 +27,7 @@ Status meanings:
 | CA-05 | Dedup and destination collision races | Pending | Add atomic match/reserve/register and shared destination locking across jobs. |
 | CA-06 | Final-path copies are non-atomic | Pending | Copy to temporary files, flush/verify, atomically replace, and clean partials. |
 | CA-07 | Configurable extensions and previews enable arbitrary reads | Pending | Enforce image allowlist/signatures, reject symlinks, and safely rasterize previews. |
-| CA-08 | Benchmark methodology gives unreliable recommendations | Partial | Existing source samples, unique destination temp data, and pipeline throughput now participate. Add repeated runs, median/p95, and explicit cache-state labeling. |
+| CA-08 | Benchmark methodology gives unreliable recommendations | Partial | Existing source samples, equal byte volumes, unique destination temp data, and pipeline throughput now participate. Add repeated runs, median/p95, and explicit cache-state labeling. |
 | CA-11 | Duplicate resolution lacks transactions/provenance and may delete pre-existing files | Pending | High priority: model provenance, make disk/DB/counter updates recoverable, and protect pre-existing paths from cleanup. |
 
 ## P2 - Correctness and Hardening

@@ -24,7 +24,8 @@ function canonicalDirectory(label, value, accessMode) {
   }
 
   try {
-    const canonicalPath = fs.realpathSync(value);
+    const realPath = fs.realpathSync(value);
+    const canonicalPath = process.platform === 'win32' ? realPath.toLowerCase() : realPath;
     if (!fs.statSync(canonicalPath).isDirectory()) {
       throw new BenchmarkValidationError(`${label} is not a directory`);
     }
