@@ -19,6 +19,10 @@ const DEFAULT_EXTENSIONS = [
   '.tif', '.tiff', '.rw2', '.orf', '.dng', '.heic', '.heif',
 ];
 
+/* The backend replaces stored secrets with this sentinel on GET; echoing it
+   back on save means "leave unchanged". Such fields render blank with a hint. */
+const SECRET_MASK = '__snapsort_secret_kept__';
+
 const settingsMeta = [
   { key: 'min_width',              label: 'Min Width (px)',           type: 'number' },
   { key: 'min_height',             label: 'Min Height (px)',          type: 'number' },
@@ -921,7 +925,8 @@ export default function Settings() {
               <input
                 className="form-input mono"
                 type="password"
-                value={values.ntfy_auth_token || ''}
+                value={values.ntfy_auth_token === SECRET_MASK ? '' : (values.ntfy_auth_token || '')}
+                placeholder={values.ntfy_auth_token === SECRET_MASK ? 'Stored — leave blank to keep' : ''}
                 onChange={(e) => handleChange('ntfy_auth_token', e.target.value)}
               />
             </div>
@@ -943,7 +948,8 @@ export default function Settings() {
                 <input
                   className="form-input mono"
                   type="password"
-                  value={values.ntfy_password || ''}
+                  value={values.ntfy_password === SECRET_MASK ? '' : (values.ntfy_password || '')}
+                  placeholder={values.ntfy_password === SECRET_MASK ? 'Stored — leave blank to keep' : ''}
                   onChange={(e) => handleChange('ntfy_password', e.target.value)}
                 />
               </div>
