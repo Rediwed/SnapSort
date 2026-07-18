@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend || npm install --prefix backend
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend || npm install --prefix frontend
+
+      - name: Python compile
+        run: python -m py_compile *.py
+
+      - name: Engine safety tests
+        run: python tests/test_engine_safety.py
+
+      - name: Backend unit tests
+        run: node --test backend/test/*.test.js
+
+      - name: Frontend build
+        run: npm run build --prefix frontend

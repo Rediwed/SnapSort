@@ -15,7 +15,10 @@
     "clear:db": "node scripts/clear_db.js",
     "clear:all": "node scripts/clear_all.js",
     "stop": "lsof -ti:4000,5173,5174,5175 | xargs kill -9 2>/dev/null && echo 'Servers stopped.' || echo 'No servers running.'",
-    "restart": "npm run stop && npm run dev"
+    "restart": "npm run stop && npm run dev",
+    "test": "npm run test:engine && npm run test:backend",
+    "test:engine": "python3 tests/test_engine_safety.py",
+    "test:backend": "node --test backend/test/*.test.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

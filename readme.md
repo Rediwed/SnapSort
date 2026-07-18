@@ -114,12 +114,32 @@ Profiles can be applied globally from Settings, per-job during job creation, or 
 ### �️ Source Safety Guarantee
 SnapSort will **never** write to, modify, rename, move, or delete any file or directory in your source locations. Source drives and directories are treated as **strictly read-only** at every layer of the application:
 
-- **Python engine**: Every copy operation verifies the destination is not inside the source directory before writing. A `RuntimeError` is raised if violated.
-- **Node.js backend**: A dedicated `sourceGuard` module checks every destructive file operation against all known source directories. Job creation is rejected if the source and destination directories overlap in any direction.
+- **Python engine**: Every copy verifies the destination is not inside the configured source **root** (compared using canonical `realpath`, so symlink aliases can't slip through) before writing, and copies **atomically** (temp file → fsync → `os.replace`) so a crash never leaves a corrupt file. A `RuntimeError` is raised on any violation.
+- **Node.js backend**: A dedicated `sourceGuard` module canonicalizes paths with `realpath` and checks every destructive file operation against all known source directories. Job creation is rejected if the destination overlaps **any** job's source in either direction.
 - **API layer**: No endpoint exists that can modify or delete source files. The only file operations SnapSort performs on disk are writing to the destination directory and cleaning up its own output. Duplicate resolutions (Overwrite, Keep Both) are guarded by `assertNotInSource()` before any write.
 - **Overlap protection**: Job creation is rejected if source and destination paths overlap in any direction (same directory, destination inside source, or source inside destination). Enforced at the Python engine, Node.js backend, and React frontend.
 
 This is SnapSort's **#1 invariant** — enforced by defense-in-depth across the full stack.
+
+### 🔐 Security & Network Access
+
+SnapSort is designed for a trusted local/homelab network. By default it binds to
+**loopback only** and requires no authentication. To expose it beyond localhost,
+configure these environment variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SNAPSORT_AUTH_TOKEN` | *(unset)* | When set, every API route except `/api/health` requires `Authorization: Bearer <token>`. |
+| `SNAPSORT_ALLOW_LAN` | `false` | Bind to all interfaces (`0.0.0.0`). Required for the published Docker port — combine it with a token. |
+| `HOST` | *(auto)* | Override the bind address explicitly. |
+| `SNAPSORT_CORS_ORIGINS` | localhost dev origins | Comma-separated allowlist of browser origins. CORS is **never** `*`. |
+
+Additional hardening: stored secrets (ntfy token/password) are masked in API
+responses and never overwritten unless you enter a new value; the photo preview
+serves only safe raster formats inline (SVG/RAW are downloaded, with `nosniff`
+and a restrictive CSP); the storage benchmark reads your source **read-only** and
+writes only to a temporary folder on the destination; and the container runs as a
+non-root user with the source mounted read-only.
 
 ### �🐳 Docker & Unraid Support
 SnapSort ships as a unified single container:
