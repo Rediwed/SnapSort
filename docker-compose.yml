@@ -1,6 +1,6 @@
 services:
   snapsort:
-    image: rediwed/snapsort:${SNAPSORT_VERSION:-1.2.1}
+    image: rediwed/snapsort:${SNAPSORT_VERSION:?Set SNAPSORT_VERSION}
     build: .
     container_name: snapsort
     ports:

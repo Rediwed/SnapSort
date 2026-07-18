@@ -47,6 +47,7 @@ router.get('/browse', (req, res) => {
     for (const entry of rawEntries) {
       /* Skip hidden / system entries */
       if (entry.name.startsWith('.')) continue;
+      if (entry.isSymbolicLink()) continue;
 
       const fullPath = path.join(dir, entry.name);
       const isDir = entry.isDirectory();
@@ -54,7 +55,8 @@ router.get('/browse', (req, res) => {
       if (!isDir && !includeFiles) continue;
 
       try {
-        const entryStat = fs.statSync(fullPath);
+        const entryStat = fs.lstatSync(fullPath);
+        if (entryStat.isSymbolicLink()) continue;
         entries.push({
           name: entry.name,
           path: fullPath,

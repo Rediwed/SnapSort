@@ -59,7 +59,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use(createAuthMiddleware(authConfig));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 if (!authConfig.enabled) {
   console.warn('Authentication is disabled for non-production development.');
@@ -88,6 +88,16 @@ if (interruptedJobs > 0) {
 app.use((req, _res, next) => {
   req.db = db;
   next();
+});
+
+app.use((error, _req, res, next) => {
+  if (error?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'JSON request body exceeds 1 MB' });
+  }
+  if (error instanceof SyntaxError && error.status === 400) {
+    return res.status(400).json({ error: 'Malformed JSON request body' });
+  }
+  return next(error);
 });
 
 /* ------------------------------------------------------------------ */

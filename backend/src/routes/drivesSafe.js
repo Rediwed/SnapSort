@@ -63,7 +63,7 @@ router.post('/prescan', (req, res) => {
     startedAt: Date.now(),
   };
   activePrescanMap.set(scanPath, state);
-  prescanAsync(scanPath, state, req.db);
+  void prescanAsync(scanPath, state, req.db);
   notifyDriveScanStarted(req.db, scanPath);
   res.json({ status: 'started', path: scanPath });
 });
@@ -97,47 +97,58 @@ router.get('/prescan/result', (req, res) => {
 
 async function prescanAsync(rootPath, state, db) {
   try {
-    const entries = await fsp.readdir(rootPath, { withFileTypes: true });
-    for (const entry of entries) {
+    let topEntries = [];
+    try {
+      topEntries = await fsp.readdir(rootPath, { withFileTypes: true });
+    } catch { /* root may become inaccessible; main walk records no files */ }
+    for (const entry of topEntries) {
       if (!entry.name.startsWith('.') && entry.isDirectory()) state.topFolders.push(entry.name);
     }
-  } catch { /* permission error */ }
 
-  const directoryStack = [rootPath];
-  while (directoryStack.length > 0) {
-    if (state.status !== 'scanning') return;
-    if (state.totalScanned >= MAX_FILES) { state.truncated = true; break; }
-    const directory = directoryStack.pop();
-    let entries;
-    try { entries = await fsp.readdir(directory, { withFileTypes: true }); } catch { continue; }
-
-    for (const entry of entries) {
+    const directoryStack = [rootPath];
+    while (directoryStack.length > 0) {
+      if (state.status !== 'scanning') return;
       if (state.totalScanned >= MAX_FILES) { state.truncated = true; break; }
-      if (entry.name.startsWith('.')) continue;
-      const fullPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        if (!SYSTEM_FOLDERS.has(entry.name.toLowerCase())) directoryStack.push(fullPath);
-      } else if (entry.isFile()) {
-        state.totalScanned++;
-        let size = 0;
-        try { size = (await fsp.stat(fullPath)).size; } catch { /* inaccessible */ }
-        if (IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
-          state.imageCount++;
-          state.imageBytes += size;
-          state.currentFile = entry.name;
-        } else {
-          state.otherCount++;
-          state.otherBytes += size;
+      const directory = directoryStack.pop();
+      let entries;
+      try { entries = await fsp.readdir(directory, { withFileTypes: true }); } catch { continue; }
+
+      for (const entry of entries) {
+        if (state.totalScanned >= MAX_FILES) { state.truncated = true; break; }
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          if (!SYSTEM_FOLDERS.has(entry.name.toLowerCase())) directoryStack.push(fullPath);
+        } else if (entry.isFile()) {
+          state.totalScanned++;
+          let size = 0;
+          try { size = (await fsp.stat(fullPath)).size; } catch { /* inaccessible */ }
+          if (IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+            state.imageCount++;
+            state.imageBytes += size;
+            state.currentFile = entry.name;
+          } else {
+            state.otherCount++;
+            state.otherBytes += size;
+          }
         }
       }
     }
+    state.status = 'done';
+    notifyDriveScanCompleted(db, rootPath, state);
+  } catch (error) {
+    state.status = 'error';
+    state.error = error.message || 'Drive prescan failed';
+    console.error(`[drive-prescan] ${rootPath}: ${state.error}`);
+  } finally {
+    state.currentFile = null;
+    const cleanupDelay = state.status === 'error' ? 30 * 1000 : 5 * 60 * 1000;
+    const cleanupTimer = setTimeout(() => activePrescanMap.delete(rootPath), cleanupDelay);
+    cleanupTimer.unref();
   }
-
-  state.status = 'done';
-  state.currentFile = null;
-  notifyDriveScanCompleted(db, rootPath, state);
-  const cleanupTimer = setTimeout(() => activePrescanMap.delete(rootPath), 5 * 60 * 1000);
-  cleanupTimer.unref();
 }
+
+router.prescanAsync = prescanAsync;
+router.activePrescanMap = activePrescanMap;
 
 module.exports = router;
