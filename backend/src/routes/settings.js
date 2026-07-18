@@ -7,6 +7,7 @@ const os = require('os');
 const { getAllSettings, upsertSetting, bulkUpsertSettings } = require('../db/dao');
 const { sendTestNotification } = require('../services/ntfyService');
 const { subscribe, unsubscribe, sendTestBrowserNotification } = require('../services/browserNotifyService');
+const { maskSecrets, isMaskedValue, isSecretKey } = require('../security');
 
 const router = Router();
 
@@ -15,16 +16,19 @@ router.get('/system-info', (_req, res) => {
   res.json({ cpu_count: os.cpus().length });
 });
 
-/* Get all settings */
+/* Get all settings (secret values are masked) */
 router.get('/', (req, res) => {
-  res.json(getAllSettings(req.db));
+  res.json(maskSecrets(getAllSettings(req.db)));
 });
 
 /* Update a single setting */
 router.put('/:key', (req, res) => {
   const { value } = req.body;
   if (value === undefined) return res.status(400).json({ error: 'value is required' });
+  /* Re-saving a masked secret means "leave it unchanged". */
+  if (isMaskedValue(value)) return res.json({ key: req.params.key, unchanged: true });
   upsertSetting(req.db, req.params.key, value);
+  if (isSecretKey(req.params.key)) return res.json({ key: req.params.key, saved: true });
   res.json({ key: req.params.key, value: String(value) });
 });
 
@@ -34,8 +38,13 @@ router.patch('/', (req, res) => {
   if (!pairs || typeof pairs !== 'object') {
     return res.status(400).json({ error: 'Body must be a JSON object of key/value pairs' });
   }
-  bulkUpsertSettings(req.db, pairs);
-  res.json(getAllSettings(req.db));
+  /* Drop masked sentinels so unchanged secrets are preserved. */
+  const filtered = {};
+  for (const [k, v] of Object.entries(pairs)) {
+    if (!isMaskedValue(v)) filtered[k] = v;
+  }
+  bulkUpsertSettings(req.db, filtered);
+  res.json(maskSecrets(getAllSettings(req.db)));
 });
 
 /* Send a test ntfy notification */

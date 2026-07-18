@@ -43,8 +43,10 @@ const APP_VERSION = (() => {
 /* ------------------------------------------------------------------ */
 /*  Middleware                                                         */
 /* ------------------------------------------------------------------ */
-app.use(cors());
-app.use(express.json());
+const { corsOptions, authMiddleware, isAuthEnabled, resolveBindHost } = require('./security');
+app.use(cors(corsOptions()));
+app.use(express.json({ limit: '1mb' }));
+app.use(authMiddleware());
 
 /* Simple HTTP request logger — appears in Docker container logs */
 app.use((req, res, next) => {
@@ -179,8 +181,13 @@ if (fs.existsSync(publicDir)) {
 /* ------------------------------------------------------------------ */
 /*  Start                                                              */
 /* ------------------------------------------------------------------ */
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`SnapSort listening on http://0.0.0.0:${PORT}`);
+const BIND_HOST = resolveBindHost();
+const server = app.listen(PORT, BIND_HOST, () => {
+  console.log(`SnapSort listening on http://${BIND_HOST}:${PORT}`);
+  if (!isAuthEnabled()) {
+    console.warn('⚠  No SNAPSORT_AUTH_TOKEN set — auth is disabled; binding to loopback only.');
+    console.warn('   To expose on the network safely, set SNAPSORT_AUTH_TOKEN and SNAPSORT_ALLOW_LAN=true (or HOST=0.0.0.0).');
+  }
 
   /* Start drive monitor for attach/eject/lost notifications */
   const { startDriveMonitor } = require('./services/driveMonitor');
@@ -208,8 +215,9 @@ const { stopDriveMonitor } = require('./services/driveMonitor');
 function shutdown(signal) {
   console.log(`\n🛑  Received ${signal} — shutting down gracefully…`);
 
-  /* 0. Stop drive monitor */
+  /* 0. Stop drive monitor + kill any running benchmark children */
   stopDriveMonitor();
+  try { benchmarkRoutes.cancelAllBenchmarks(); } catch { /* ignore */ }
 
   /* 1. Kill any running Python child processes */
   const activeIds = getActiveJobIds();
