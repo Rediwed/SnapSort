@@ -63,6 +63,12 @@ function listPhotoPaths(db, jobId) {
   ).all(jobId).map((r) => r.dest_path);
 }
 
+function listSourceDirs(db) {
+  return db.prepare(
+    'SELECT DISTINCT source_dir FROM jobs WHERE source_dir IS NOT NULL'
+  ).all().map((row) => row.source_dir);
+}
+
 /* ================================================================== */
 /*  PHOTOS                                                             */
 /* ================================================================== */
@@ -298,7 +304,7 @@ function getDashboardStats(db) {
 }
 
 module.exports = {
-  createJob, getJob, listJobs, updateJobStatus, deleteJob,
+  createJob, getJob, listJobs, updateJobStatus, deleteJob, listSourceDirs,
   insertPhoto, listPhotos, countPhotos, getPhoto, listPhotoPaths,
   getPhotosByIds, updatePhotoOverride,
   insertDuplicate, listDuplicates, resolveDuplicate, getDuplicate, countDuplicates,

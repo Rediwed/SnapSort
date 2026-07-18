@@ -25,7 +25,7 @@ const settingsRoutes = require('./routes/settings');
 const dashboardRoutes = require('./routes/dashboard');
 const filesystemRoutes = require('./routes/filesystem');
 const drivesRoutes = require('./routes/drives');
-const benchmarkRoutes = require('./routes/benchmarks');
+const benchmarkRoutes = require('./routes/benchmarksSafe');
 const profileRoutes = require('./routes/profiles');
 
 const PORT = process.env.PORT || 4000;
@@ -224,6 +224,9 @@ function shutdown(signal) {
       }
     }
   }
+
+  /* 1b. Stop an active storage benchmark and let its runner clean up. */
+  benchmarkRoutes.cancelAllBenchmarks();
 
   /* 2. Close the database connection */
   try {

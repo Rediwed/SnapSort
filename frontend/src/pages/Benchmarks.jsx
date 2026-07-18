@@ -19,6 +19,7 @@ function formatBytes(bytes) {
 
 /* Profile tier order (best → worst) for display sorting */
 const PROFILE_ORDER = ['nvme_gen4', 'nvme_gen3', 'sata_ssd', 'hdd_7200rpm', 'hdd_5400rpm', 'usb_external', 'default'];
+const MAX_BENCHMARK_MB = 1024;
 
 export default function Benchmarks() {
   const settings = useSettings();
@@ -32,13 +33,21 @@ export default function Benchmarks() {
     fileSizeMB: 5,
   });
   const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState(null);
   const [applied, setApplied] = useState(null); // id of applied profile
   const [picker, setPicker] = useState(null); // 'source' | 'dest' | null
   const pollRef = useRef(null);
 
-  /* Same-path guard */
-  const pathsMatch = config.sourcePath && config.destPath
-    && config.sourcePath.replace(/\/+$/, '') === config.destPath.replace(/\/+$/, '');
+  /* Source and destination must be completely disjoint. */
+  const normalizedSource = config.sourcePath.replace(/\/+$/, '');
+  const normalizedDestination = config.destPath.replace(/\/+$/, '');
+  const pathsOverlap = normalizedSource && normalizedDestination && (
+    normalizedSource === normalizedDestination
+    || normalizedDestination.startsWith(`${normalizedSource}/`)
+    || normalizedSource.startsWith(`${normalizedDestination}/`)
+  );
+  const totalBenchmarkMB = config.fileCount * config.fileSizeMB;
+  const exceedsSizeLimit = totalBenchmarkMB > MAX_BENCHMARK_MB;
 
   /* Load list + profiles */
   const loadRuns = () => fetchBenchmarks().then(setRuns).catch(console.error);
@@ -68,14 +77,17 @@ export default function Benchmarks() {
 
   /* Start a benchmark */
   const handleStart = async () => {
-    if (!config.sourcePath || !config.destPath || pathsMatch) return;
+    if (!config.sourcePath || !config.destPath || pathsOverlap || exceedsSizeLimit) return;
     setStarting(true);
     setApplied(null);
+    setStartError(null);
     try {
       const { id } = await startBenchmark(config);
       const detail = await fetchBenchmark(id);
       setActive(detail);
       loadRuns();
+    } catch (error) {
+      setStartError(error.message || 'Failed to start benchmark');
     } finally {
       setStarting(false);
     }
@@ -119,8 +131,7 @@ export default function Benchmarks() {
     : null;
 
   const phaseLabel = {
-    setup: 'Creating test files…',
-    source_write: 'Writing to source…',
+    setup: 'Preparing destination test files…',
     source_read: 'Reading from source…',
     dest_write: 'Writing to destination…',
     copy: 'Copying source → destination…',
@@ -157,7 +168,7 @@ export default function Benchmarks() {
         <button
           className="btn primary"
           onClick={handleStart}
-          disabled={starting || !config.sourcePath || !config.destPath || pathsMatch}
+          disabled={starting || !config.sourcePath || !config.destPath || pathsOverlap || exceedsSizeLimit}
         >
           {starting ? 'Running…' : <><Play size={14} /> Run Benchmark</>}
         </button>
@@ -198,15 +209,27 @@ export default function Benchmarks() {
             </div>
           </div>
 
-          {pathsMatch && (
+          {pathsOverlap && (
             <div style={{ padding: '8px 12px', background: 'var(--red-muted)', borderRadius: 'var(--radius-md)', color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
-              Source and destination must be different folders.
+              Source and destination must be completely separate folders.
             </div>
           )}
 
           <div style={{ padding: '8px 12px', background: 'var(--orange-muted, rgba(210,153,34,0.1))', borderRadius: 'var(--radius-md)', color: 'var(--orange)', fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
-                        <AlertTriangle size={14} /> Temporary test files will be written to <strong>both</strong> source and destination folders during the benchmark, then automatically deleted afterwards. Do not use this on a source drive that is malfunctioning or at risk of data loss.
+            <AlertTriangle size={14} /> Source files are sampled read-only. Temporary test files are written to a unique folder under the <strong>destination only</strong>, then automatically deleted.
           </div>
+
+          {exceedsSizeLimit && (
+            <div style={{ padding: '8px 12px', background: 'var(--red-muted)', borderRadius: 'var(--radius-md)', color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
+              Benchmark data is limited to {MAX_BENCHMARK_MB.toLocaleString()} MB.
+            </div>
+          )}
+
+          {startError && (
+            <div style={{ padding: '8px 12px', background: 'var(--red-muted)', borderRadius: 'var(--radius-md)', color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>
+              {startError}
+            </div>
+          )}
 
           <div className="bench-options">
             <div className="form-group" style={{ flex: 1 }}>
@@ -235,7 +258,7 @@ export default function Benchmarks() {
             </div>
             <div className="form-group" style={{ flex: 1, display: 'flex', alignItems: 'flex-end' }}>
               <span className="form-hint" style={{ margin: 0 }}>
-                Total: {formatBytes(config.fileCount * config.fileSizeMB * 1024 * 1024)}
+                Total: {formatBytes(totalBenchmarkMB * 1024 * 1024)}
               </span>
             </div>
           </div>
@@ -264,7 +287,7 @@ export default function Benchmarks() {
                   <StatCard label="Dest Write"     value={`${r.dest_write_mbps} MB/s`}     variant="accent" />
                   <StatCard label="Copy Speed"     value={`${r.copy_mbps} MB/s`}           variant="green" sub="Source → Destination" />
                   <StatCard label="Hash (parallel)" value={`${r.hash_parallel_mbps} MB/s`} variant="pink" sub={`${r.hash_workers} workers · ${r.parallel_speedup}× vs single-thread`} />
-                  <StatCard label="Data Tested"    value={formatBytes(r.total_bytes)}       variant="orange" sub={`${r.file_count} × ${r.file_size_mb} MB · ${r.cpu_count} CPU cores`} />
+                  <StatCard label="Destination Test Data" value={formatBytes(r.dest_bytes || r.total_bytes)} variant="orange" sub={`${r.file_count} × ${r.file_size_mb} MB · ${r.cpu_count} CPU cores`} />
                 </div>
 
                 {/* ---- Bottleneck analysis ---- */}
@@ -273,8 +296,8 @@ export default function Benchmarks() {
                   <div className="bench-bottleneck">
                     <div className="bench-bottleneck-result">
                       <span className="bench-bottleneck-label">Bottleneck</span>
-                      <Badge variant={r.bottleneck === 'cpu' ? 'pink' : r.bottleneck === 'source' ? 'cyan' : 'accent'}>
-                        {r.bottleneck === 'source' ? <><BookOpen size={14} /> Source Volume</> : r.bottleneck === 'destination' ? <><HardDrive size={14} /> Destination Volume</> : <><Cpu size={14} /> CPU / Hashing</>}
+                      <Badge variant={r.bottleneck === 'cpu' ? 'pink' : r.bottleneck === 'source' ? 'cyan' : r.bottleneck === 'pipeline' ? 'green' : 'accent'}>
+                        {r.bottleneck === 'source' ? <><BookOpen size={14} /> Source Volume</> : r.bottleneck === 'destination' ? <><HardDrive size={14} /> Destination Volume</> : r.bottleneck === 'pipeline' ? <><RefreshCw size={14} /> Copy Pipeline</> : <><Cpu size={14} /> CPU / Hashing</>}
                       </Badge>
                     </div>
                     <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
@@ -282,6 +305,8 @@ export default function Benchmarks() {
                         ? `Source read speed (${r.source_read_mbps} MB/s) is the limiting factor. The destination can write faster than the source can deliver data. Consider a faster source drive or sequential I/O to avoid thrashing.`
                         : r.bottleneck === 'destination'
                         ? `Destination write speed (${r.dest_write_mbps} MB/s) is the limiting factor. The source can read faster than the destination can accept data. Limiting concurrent copies prevents overwhelming the destination.`
+                        : r.bottleneck === 'pipeline'
+                        ? `End-to-end copy speed (${r.copy_mbps} MB/s) is the limiting measurement. This includes source reads, destination writes, and filesystem overhead.`
                         : `CPU hashing speed (${r.hash_parallel_mbps} MB/s with ${r.hash_workers} workers) is the limiting factor. Both drives are faster than hashing can process. Enabling fast hash and adding workers will help most.`}
                     </p>
                     <div className="bench-bottleneck-bars">
@@ -312,7 +337,7 @@ export default function Benchmarks() {
                   </div>
                   <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
                     Profile is tuned for the <strong>slowest storage</strong> in the chain
-                    ({Math.min(r.source_read_mbps, r.dest_write_mbps)} MB/s).
+                    ({Math.min(r.source_read_mbps, r.dest_write_mbps, r.copy_mbps)} MB/s).
                     If either volume is a slow drive, SnapSort throttles parallelism to avoid
                     thrashing — the bottleneck sets the pace for the entire job.
                   </p>
