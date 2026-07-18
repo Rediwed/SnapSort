@@ -70,6 +70,10 @@ class BenchmarkRunnerTest(unittest.TestCase):
             self.assertEqual(summary["source_bytes"], summary["copy_bytes"])
             self.assertIn(summary["bottleneck"], {"source", "destination", "pipeline", "cpu"})
             self.assertNotIn("source_write_mbps", summary)
+            self.assertEqual(summary["measurement_runs"], 3)
+            self.assertEqual(len(summary["source_read_samples_mbps"]), 3)
+            self.assertEqual(len(summary["dest_write_samples_mbps"]), 3)
+            self.assertEqual(len(summary["copy_samples_mbps"]), 3)
 
     def test_benchmark_rejects_numeric_code_injection(self):
         with tempfile.TemporaryDirectory() as temp_root:
@@ -139,6 +143,7 @@ class BenchmarkRunnerTest(unittest.TestCase):
         self.assertEqual(benchmark_runner.suggested_profile_for(101), "hdd_7200rpm")
         self.assertEqual(benchmark_runner.suggested_profile_for(41), "hdd_5400rpm")
         self.assertEqual(benchmark_runner.suggested_profile_for(40), "usb_external")
+        self.assertEqual(benchmark_runner.percentile([1, 2, 3], 95), 3)
 
 
 if __name__ == "__main__":

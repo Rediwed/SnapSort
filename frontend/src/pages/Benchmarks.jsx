@@ -341,6 +341,10 @@ export default function Benchmarks() {
                     If either volume is a slow drive, SnapSort throttles parallelism to avoid
                     thrashing — the bottleneck sets the pace for the entire job.
                   </p>
+                  <p className="form-hint" style={{ marginBottom: 16 }}>
+                    Recommendation uses the median of {r.measurement_runs || 1} passes.
+                    Cache handling: {r.cache_mode === 'best_effort_drop_cache' ? 'best-effort cache eviction' : 'operating-system managed'}.
+                  </p>
 
                   <div className="bench-profiles">
                     {sortedProfiles.filter(p => p.id !== 'default').map((profile) => {

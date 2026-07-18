@@ -27,7 +27,7 @@ Status meanings:
 | CA-05 | Dedup and destination collision races | Done | Exact-content copy guards serialize match/copy/register, destination commits use filesystem locks, collision names are bounded, and overlapping active jobs are rejected. |
 | CA-06 | Final-path copies are non-atomic | Done | Python and Node copy to same-directory temp files, fsync and hash-verify, atomically install, clean partials, and compensate DB failures. |
 | CA-07 | Configurable extensions and previews enable arbitrary reads | Done | Preview/metadata paths are job-root confined regular files with fixed allowlists; previews are pixel-limited and re-encoded to JPEG with private cache, CSP, and `nosniff`. |
-| CA-08 | Benchmark methodology gives unreliable recommendations | Partial | Existing source samples, equal byte volumes, unique destination temp data, and pipeline throughput now participate. Add repeated runs, median/p95, and explicit cache-state labeling. |
+| CA-08 | Benchmark methodology gives unreliable recommendations | Done | Source samples and equal byte volumes run through three passes; median and p95 throughput, pipeline bottlenecks, unique destination data, and cache behavior are reported. |
 | CA-11 | Duplicate resolution lacks transactions/provenance and may delete pre-existing files | Done | Output ownership is explicit, legacy/overwrite paths default protected, file operations are verified with compensating rollback, outcomes are recorded, and cleanup deletes owned paths only. |
 
 ## P2 - Correctness and Hardening

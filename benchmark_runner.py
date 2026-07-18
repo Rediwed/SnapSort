@@ -6,6 +6,7 @@ import math
 import os
 import shutil
 import signal
+import statistics
 import sys
 import tempfile
 import time
@@ -17,6 +18,7 @@ MAX_FILE_SIZE_MB = 100
 MAX_TOTAL_MB = 1024
 READ_CHUNK_SIZE = 1024 * 1024
 RANDOM_CHUNK_COUNT = 16
+MEASUREMENT_RUNS = 3
 
 
 class BenchmarkError(Exception):
@@ -153,7 +155,7 @@ def throughput_mb_per_second(byte_count, elapsed):
     return (byte_count / (1024 * 1024)) / elapsed
 
 
-def create_destination_files(bench_dir, file_sizes):
+def create_destination_files(bench_dir, file_sizes, prefix="write"):
     largest_file = max(file_sizes)
     chunk_size = min(READ_CHUNK_SIZE, largest_file)
     pool_size = min(RANDOM_CHUNK_COUNT, max(1, math.ceil(largest_file / chunk_size)))
@@ -162,7 +164,7 @@ def create_destination_files(bench_dir, file_sizes):
 
     started_at = time.perf_counter()
     for file_index, file_size in enumerate(file_sizes):
-        file_path = os.path.join(bench_dir, f"write_{file_index:04d}.dat")
+        file_path = os.path.join(bench_dir, f"{prefix}_{file_index:04d}.dat")
         with open(file_path, "xb") as test_file:
             written = 0
             chunk_index = file_index
@@ -192,6 +194,17 @@ def suggested_profile_for(throughput):
     return "usb_external"
 
 
+def percentile(values, percentile_value):
+    """Return a nearest-rank percentile from a non-empty numeric sequence."""
+    ordered = sorted(values)
+    index = max(0, math.ceil((percentile_value / 100) * len(ordered)) - 1)
+    return ordered[index]
+
+
+def rounded_samples(values):
+    return [round(value, 2) for value in values]
+
+
 def run_benchmark(config):
     source_dir = config["source_dir"]
     dest_dir = config["dest_dir"]
@@ -206,33 +219,93 @@ def run_benchmark(config):
     try:
         emit({"event": "phase", "phase": "setup", "message": "Preparing destination test files..."})
 
-        source_started = time.perf_counter()
-        source_bytes = sum(read_sample(file_path, size) for file_path, size in samples)
-        source_read_time = time.perf_counter() - source_started
-        emit({"event": "phase", "phase": "source_read", "time": round(source_read_time, 4)})
-
         sample_sizes = [sample_size for _, sample_size in samples]
-        test_files, dest_write_time = create_destination_files(bench_dir, sample_sizes)
+        source_bytes = sum(sample_sizes)
         dest_bytes = sum(sample_sizes)
-        emit({"event": "phase", "phase": "dest_write", "time": round(dest_write_time, 4)})
+        copy_bytes = source_bytes
 
-        copy_started = time.perf_counter()
-        copy_bytes = 0
-        for index, (file_path, sample_size) in enumerate(samples):
-            destination_path = os.path.join(bench_dir, f"copy_{index:04d}.dat")
-            copy_bytes += copy_sample(file_path, sample_size, destination_path)
-        copy_time = time.perf_counter() - copy_started
-        emit({"event": "phase", "phase": "copy", "time": round(copy_time, 4)})
+        source_read_times = []
+        source_read_samples = []
+        for run_index in range(MEASUREMENT_RUNS):
+            started_at = time.perf_counter()
+            bytes_read = sum(read_sample(file_path, size) for file_path, size in samples)
+            elapsed = time.perf_counter() - started_at
+            if bytes_read != source_bytes:
+                raise BenchmarkError("Source sample size changed during benchmark")
+            source_read_times.append(elapsed)
+            source_read_samples.append(throughput_mb_per_second(source_bytes, elapsed))
+            emit({
+                "event": "phase", "phase": "source_read", "run": run_index + 1,
+                "runs": MEASUREMENT_RUNS, "time": round(elapsed, 4),
+            })
 
-        hash_started = time.perf_counter()
-        for file_path in test_files:
-            file_hash(file_path)
-        standard_hash_time = time.perf_counter() - hash_started
+        destination_write_times = []
+        destination_write_samples = []
+        test_files = []
+        for run_index in range(MEASUREMENT_RUNS):
+            test_files, elapsed = create_destination_files(
+                bench_dir, sample_sizes, prefix=f"write_{run_index}"
+            )
+            destination_write_times.append(elapsed)
+            destination_write_samples.append(throughput_mb_per_second(dest_bytes, elapsed))
+            emit({
+                "event": "phase", "phase": "dest_write", "run": run_index + 1,
+                "runs": MEASUREMENT_RUNS, "time": round(elapsed, 4),
+            })
+            if run_index < MEASUREMENT_RUNS - 1:
+                for file_path in test_files:
+                    os.unlink(file_path)
 
-        fast_hash_started = time.perf_counter()
-        for file_path in test_files:
-            file_hash_fast(file_path)
-        fast_hash_time = time.perf_counter() - fast_hash_started
+        copy_times = []
+        copy_samples = []
+        for run_index in range(MEASUREMENT_RUNS):
+            started_at = time.perf_counter()
+            bytes_copied = 0
+            copied_files = []
+            for index, (file_path, sample_size) in enumerate(samples):
+                destination_path = os.path.join(
+                    bench_dir, f"copy_{run_index}_{index:04d}.dat"
+                )
+                bytes_copied += copy_sample(file_path, sample_size, destination_path)
+                copied_files.append(destination_path)
+            elapsed = time.perf_counter() - started_at
+            if bytes_copied != copy_bytes:
+                raise BenchmarkError("Copied sample size changed during benchmark")
+            copy_times.append(elapsed)
+            copy_samples.append(throughput_mb_per_second(copy_bytes, elapsed))
+            emit({
+                "event": "phase", "phase": "copy", "run": run_index + 1,
+                "runs": MEASUREMENT_RUNS, "time": round(elapsed, 4),
+            })
+            for file_path in copied_files:
+                os.unlink(file_path)
+
+        standard_hash_times = []
+        fast_hash_times = []
+        parallel_hash_times = []
+        worker_count = min(os.cpu_count() or 4, len(test_files), 32)
+        for _run_index in range(MEASUREMENT_RUNS):
+            started_at = time.perf_counter()
+            for file_path in test_files:
+                file_hash(file_path)
+            standard_hash_times.append(time.perf_counter() - started_at)
+
+            started_at = time.perf_counter()
+            for file_path in test_files:
+                file_hash_fast(file_path)
+            fast_hash_times.append(time.perf_counter() - started_at)
+
+            started_at = time.perf_counter()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as pool:
+                list(pool.map(file_hash, test_files))
+            parallel_hash_times.append(time.perf_counter() - started_at)
+
+        source_read_time = statistics.median(source_read_times)
+        dest_write_time = statistics.median(destination_write_times)
+        copy_time = statistics.median(copy_times)
+        standard_hash_time = statistics.median(standard_hash_times)
+        fast_hash_time = statistics.median(fast_hash_times)
+        parallel_hash_time = statistics.median(parallel_hash_times)
         hash_speedup = standard_hash_time / fast_hash_time if fast_hash_time > 0 else 1.0
         emit({
             "event": "phase",
@@ -242,11 +315,6 @@ def run_benchmark(config):
             "speedup": round(hash_speedup, 2),
         })
 
-        worker_count = min(os.cpu_count() or 4, len(test_files), 32)
-        parallel_started = time.perf_counter()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as pool:
-            list(pool.map(file_hash, test_files))
-        parallel_hash_time = time.perf_counter() - parallel_started
         parallel_speedup = standard_hash_time / parallel_hash_time if parallel_hash_time > 0 else 1.0
         emit({
             "event": "phase",
@@ -256,9 +324,9 @@ def run_benchmark(config):
             "speedup_vs_single": round(parallel_speedup, 2),
         })
 
-        source_read_mbps = throughput_mb_per_second(source_bytes, source_read_time)
-        dest_write_mbps = throughput_mb_per_second(dest_bytes, dest_write_time)
-        copy_mbps = throughput_mb_per_second(copy_bytes, copy_time)
+        source_read_mbps = statistics.median(source_read_samples)
+        dest_write_mbps = statistics.median(destination_write_samples)
+        copy_mbps = statistics.median(copy_samples)
         hash_single_mbps = throughput_mb_per_second(dest_bytes, standard_hash_time)
         hash_parallel_mbps = throughput_mb_per_second(dest_bytes, parallel_hash_time)
 
@@ -277,13 +345,21 @@ def run_benchmark(config):
             "requested_file_count": file_count,
             "file_size_mb": file_size_mb,
             "source_sample_count": len(samples),
+            "measurement_runs": MEASUREMENT_RUNS,
+            "cache_mode": "best_effort_drop_cache" if hasattr(os, "posix_fadvise") else "os_managed",
             "source_bytes": source_bytes,
             "dest_bytes": dest_bytes,
             "copy_bytes": copy_bytes,
             "total_bytes": copy_bytes,
             "source_read_mbps": round(source_read_mbps, 2),
+            "source_read_p95_mbps": round(percentile(source_read_samples, 95), 2),
+            "source_read_samples_mbps": rounded_samples(source_read_samples),
             "dest_write_mbps": round(dest_write_mbps, 2),
+            "dest_write_p95_mbps": round(percentile(destination_write_samples, 95), 2),
+            "dest_write_samples_mbps": rounded_samples(destination_write_samples),
             "copy_mbps": round(copy_mbps, 2),
+            "copy_p95_mbps": round(percentile(copy_samples, 95), 2),
+            "copy_samples_mbps": rounded_samples(copy_samples),
             "hash_single_mbps": round(hash_single_mbps, 2),
             "hash_parallel_mbps": round(hash_parallel_mbps, 2),
             "hash_workers": worker_count,
