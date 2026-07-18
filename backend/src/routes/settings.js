@@ -11,6 +11,13 @@ const { maskSecrets, isMaskedValue, isSecretKey } = require('../security');
 
 const router = Router();
 
+/* Setting keys are lower-snake identifiers; values are bounded to avoid DB bloat/DoS. */
+const SETTING_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
+function validateSettingKV(key, value) {
+  if (!SETTING_KEY_RE.test(String(key))) throw new Error('Invalid setting key');
+  if (String(value).length > 8192) throw new Error('Setting value too long (max 8192 chars)');
+}
+
 /* Server hardware info (must be before /:key) */
 router.get('/system-info', (_req, res) => {
   res.json({ cpu_count: os.cpus().length });
@@ -27,6 +34,7 @@ router.put('/:key', (req, res) => {
   if (value === undefined) return res.status(400).json({ error: 'value is required' });
   /* Re-saving a masked secret means "leave it unchanged". */
   if (isMaskedValue(value)) return res.json({ key: req.params.key, unchanged: true });
+  try { validateSettingKV(req.params.key, value); } catch (e) { return res.status(400).json({ error: e.message }); }
   upsertSetting(req.db, req.params.key, value);
   if (isSecretKey(req.params.key)) return res.json({ key: req.params.key, saved: true });
   res.json({ key: req.params.key, value: String(value) });
@@ -41,7 +49,9 @@ router.patch('/', (req, res) => {
   /* Drop masked sentinels so unchanged secrets are preserved. */
   const filtered = {};
   for (const [k, v] of Object.entries(pairs)) {
-    if (!isMaskedValue(v)) filtered[k] = v;
+    if (isMaskedValue(v)) continue;
+    try { validateSettingKV(k, v); } catch (e) { return res.status(400).json({ error: `${k}: ${e.message}` }); }
+    filtered[k] = v;
   }
   bulkUpsertSettings(req.db, filtered);
   res.json(maskSecrets(getAllSettings(req.db)));

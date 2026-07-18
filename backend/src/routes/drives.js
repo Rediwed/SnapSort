@@ -6,7 +6,7 @@
  */
 
 const { Router } = require('express');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const os = require('os');
 const fs = require('fs');
 const { notifyDriveScanStarted, notifyDriveScanCompleted } = require('../services/ntfyService');
@@ -57,7 +57,7 @@ function detectMacDrives() {
       } catch { /* skip */ }
 
       try {
-        const info = execSync(`diskutil info "${volPath}" 2>/dev/null`, { encoding: 'utf-8', timeout: 5000 });
+        const info = execFileSync('diskutil', ['info', volPath], { encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
         const get = (key) => {
           const m = info.match(new RegExp(`${key}:\\s*(.+)`));
           return m ? m[1].trim() : null;

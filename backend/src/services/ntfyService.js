@@ -34,7 +34,28 @@ function duration(startIso) {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-/* ── Core send function ───────────────────────────────────────────── */
+/* ── URL safety (SSRF guard) ─────────────────────────── */
+
+function assertSafeNtfyUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('Invalid ntfy server URL');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('ntfy server must use http:// or https://');
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (process.env.SNAPSORT_ALLOW_INTERNAL_NOTIFY !== 'true') {
+    if (host === '169.254.169.254' || host === 'metadata.google.internal' || host.startsWith('169.254.')) {
+      throw new Error('Refusing to send a notification to a link-local/metadata address');
+    }
+  }
+  return parsed;
+}
+
+/* ── Core send function ────────────────────────── */
 
 /**
  * Send a notification via ntfy.
@@ -43,6 +64,7 @@ function duration(startIso) {
  */
 async function send(settings, { title, message, priority, tags }) {
   const server = (settings.ntfy_server || 'https://ntfy.sh').replace(/\/+$/, '');
+  assertSafeNtfyUrl(server);
   const topic = settings.ntfy_topic || 'snapsort';
   const url = `${server}`;
 
@@ -60,12 +82,23 @@ async function send(settings, { title, message, priority, tags }) {
   if (priority) payload.priority = Number(priority) || 3;
   if (tags) payload.tags = tags.split(',').map((t) => t.trim());
 
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+  const res = await fetchWithTimeout(url, { method: 'POST', headers, body: JSON.stringify(payload) });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     const err = new Error(`ntfy HTTP ${res.status}: ${body}`);
     console.error(`[ntfy] ${err.message}`);
     throw err;
+  }
+}
+
+/** fetch() with a hard 10s timeout so a slow/unreachable server can't hang the process. */
+async function fetchWithTimeout(url, options, ms = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
