@@ -249,6 +249,7 @@ router.post('/:id/override', async (req, res) => {
   const now = new Date().toISOString();
   let copiedCount = 0;
   let errorCount = 0;
+  let skippedCopied = 0; // previously-'skipped' photos that were successfully copied
   const results = [];
 
   for (const photo of eligible) {
@@ -279,6 +280,7 @@ router.post('/:id/override', async (req, res) => {
       fs.copyFileSync(photo.src_path, finalDest);
       updatePhotoOverride(req.db, photo.id, { status: 'copied', destPath: finalDest, overriddenAt: now });
       copiedCount++;
+      if (photo.status === 'skipped') skippedCopied++;
       results.push({ id: photo.id, destPath: finalDest });
     } catch (err) {
       results.push({ id: photo.id, error: err.message });
@@ -286,12 +288,12 @@ router.post('/:id/override', async (req, res) => {
     }
   }
 
-  /* Adjust job counters — count how many were skipped vs scanned */
-  const skippedOverridden = eligible.filter((p) => p.status === 'skipped').length;
+  /* Adjust job counters: decrement skipped by exactly the number of previously
+     'skipped' photos that were copied (scanned overrides only add to copied). */
   const updatedJob = getJob(req.db, job.id);
   updateJobStatus(req.db, job.id, 'done', {
     copied: (updatedJob.copied || 0) + copiedCount,
-    skipped: Math.max(0, (updatedJob.skipped || 0) - Math.min(skippedOverridden, copiedCount)),
+    skipped: Math.max(0, (updatedJob.skipped || 0) - skippedCopied),
     errors: (updatedJob.errors || 0) + errorCount,
   });
 
