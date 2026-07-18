@@ -13,7 +13,9 @@
     "clear:demo": "rm -rf demo_data && echo 'Demo data cleared.'",
     "clear:test": "rm -rf test_data && echo 'Test data cleared.'",
     "clear:db": "node scripts/clear_db.js",
-    "clear:all": "node scripts/clear_all.js"
+    "clear:all": "node scripts/clear_all.js",
+    "stop": "lsof -ti:4000,5173,5174,5175 | xargs kill -9 2>/dev/null && echo 'Servers stopped.' || echo 'No servers running.'",
+    "restart": "npm run stop && npm run dev"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
