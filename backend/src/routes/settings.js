@@ -4,9 +4,14 @@
 
 const { Router } = require('express');
 const os = require('os');
-const { getAllSettings, upsertSetting, bulkUpsertSettings } = require('../db/dao');
+const { getAllSettings, getSetting, upsertSetting, bulkUpsertSettings } = require('../db/dao');
 const { sendTestNotification } = require('../services/ntfyService');
 const { subscribe, unsubscribe, sendTestBrowserNotification } = require('../services/browserNotifyService');
+const {
+  normalizeSettingsUpdate,
+  publicSettingUpdate,
+  publicSettings,
+} = require('../security/settingsSecrets');
 
 const router = Router();
 
@@ -17,25 +22,28 @@ router.get('/system-info', (_req, res) => {
 
 /* Get all settings */
 router.get('/', (req, res) => {
-  res.json(getAllSettings(req.db));
+  res.json(publicSettings(getAllSettings(req.db)));
 });
 
 /* Update a single setting */
 router.put('/:key', (req, res) => {
   const { value } = req.body;
   if (value === undefined) return res.status(400).json({ error: 'value is required' });
-  upsertSetting(req.db, req.params.key, value);
-  res.json({ key: req.params.key, value: String(value) });
+  const normalized = normalizeSettingsUpdate({ [req.params.key]: value });
+  if (Object.hasOwn(normalized, req.params.key)) {
+    upsertSetting(req.db, req.params.key, normalized[req.params.key]);
+  }
+  res.json(publicSettingUpdate(req.params.key, getSetting(req.db, req.params.key)));
 });
 
 /* Bulk update settings */
 router.patch('/', (req, res) => {
   const pairs = req.body;
-  if (!pairs || typeof pairs !== 'object') {
+  if (!pairs || typeof pairs !== 'object' || Array.isArray(pairs)) {
     return res.status(400).json({ error: 'Body must be a JSON object of key/value pairs' });
   }
-  bulkUpsertSettings(req.db, pairs);
-  res.json(getAllSettings(req.db));
+  bulkUpsertSettings(req.db, normalizeSettingsUpdate(pairs));
+  res.json(publicSettings(getAllSettings(req.db)));
 });
 
 /* Send a test ntfy notification */

@@ -6,6 +6,11 @@ import Modal from '../components/Modal';
 import InfoTip from '../components/InfoTip';
 import { fmtDate, fmtDateTime } from '../dateFormat';
 import { useSettings } from '../SettingsContext';
+import {
+  buildSettingsPayload,
+  clearSecretDraft,
+  updateSecretDraft,
+} from '../settingsPayload';
 
 const SETTINGS_TABS = [
   { value: 'general',       label: 'General' },
@@ -96,11 +101,18 @@ export default function Settings() {
     setSaved(false);
   };
 
+  const handleSecretChange = (key, val) => {
+    setValues((prev) => updateSecretDraft(prev, key, val));
+    setSaved(false);
+  };
+
+  const handleSecretClear = (key) => {
+    setValues((prev) => clearSecretDraft(prev, key));
+    setSaved(false);
+  };
+
   const handleSave = async () => {
-    /* Strip transient UI-only keys (prefixed with _) before saving */
-    const toSave = Object.fromEntries(Object.entries(values).filter(([k]) => !k.startsWith('_')));
-    await updateSettings(toSave);
-    setSavedValues({ ...values });
+    let persistedValues = await updateSettings(buildSettingsPayload(values));
 
     // Save profile edits if editing a custom profile with changes
     const ep = profiles.find((p) => p.id === editingProfileId);
@@ -110,7 +122,7 @@ export default function Settings() {
       // If editing the default profile, sync values to settings for backend compat
       if (editingProfileId === (values.default_performance_profile || 'default')) {
         const syncValues = {
-          ...values,
+          ...persistedValues,
           enable_multithreading: profileEdits.enable_multithreading ? 'true' : 'false',
           sequential_processing: profileEdits.sequential_processing ? 'true' : 'false',
           max_worker_threads: String(profileEdits.max_workers),
@@ -118,14 +130,14 @@ export default function Settings() {
           fast_hash_bytes: String(profileEdits.hash_bytes),
           concurrent_copies: String(profileEdits.concurrent_copies),
         };
-        await updateSettings(syncValues);
-        setValues(syncValues);
-        setSavedValues(syncValues);
+        persistedValues = await updateSettings(buildSettingsPayload(syncValues));
       }
       const updatedProfiles = await fetchProfiles();
       setProfiles(updatedProfiles);
     }
 
+    setValues(persistedValues);
+    setSavedValues(persistedValues);
     setSaved(true);
     refreshGlobalSettings();
     setTimeout(() => setSaved(false), 2000);
@@ -168,8 +180,9 @@ export default function Settings() {
     setNtfyTestResult(null);
     try {
       /* Save current settings first so the test uses the latest values */
-      await updateSettings(values);
-      setSavedValues({ ...values });
+      const persistedValues = await updateSettings(buildSettingsPayload(values));
+      setValues(persistedValues);
+      setSavedValues(persistedValues);
       await sendNtfyTest();
       setNtfyTestResult('sent');
     } catch (err) {
@@ -199,8 +212,9 @@ export default function Settings() {
         setTimeout(() => setBrowserNotifyTestResult(null), 6000);
         return;
       }
-      await updateSettings(values);
-      setSavedValues({ ...values });
+      const persistedValues = await updateSettings(buildSettingsPayload(values));
+      setValues(persistedValues);
+      setSavedValues(persistedValues);
       await sendBrowserNotifyTest();
       setBrowserNotifyTestResult('sent');
     } catch (err) {
@@ -918,12 +932,19 @@ export default function Settings() {
           {values.ntfy_auth_type === 'token' && (
             <div className="form-group">
               <label>Access Token</label>
-              <input
-                className="form-input mono"
-                type="password"
-                value={values.ntfy_auth_token || ''}
-                onChange={(e) => handleChange('ntfy_auth_token', e.target.value)}
-              />
+              <div className="flex gap-8">
+                <input
+                  className="form-input mono"
+                  type="password"
+                  placeholder={values.ntfy_auth_token_configured ? 'Configured — enter a replacement' : ''}
+                  value={values.ntfy_auth_token || ''}
+                  onChange={(e) => handleSecretChange('ntfy_auth_token', e.target.value)}
+                />
+                {values.ntfy_auth_token_configured && (
+                  <button className="btn" onClick={() => handleSecretClear('ntfy_auth_token')}>Clear</button>
+                )}
+              </div>
+              <p className="form-hint">Saved tokens are never returned to the browser.</p>
             </div>
           )}
 
@@ -940,12 +961,19 @@ export default function Settings() {
               </div>
               <div className="form-group">
                 <label>Password</label>
-                <input
-                  className="form-input mono"
-                  type="password"
-                  value={values.ntfy_password || ''}
-                  onChange={(e) => handleChange('ntfy_password', e.target.value)}
-                />
+                <div className="flex gap-8">
+                  <input
+                    className="form-input mono"
+                    type="password"
+                    placeholder={values.ntfy_password_configured ? 'Configured — enter a replacement' : ''}
+                    value={values.ntfy_password || ''}
+                    onChange={(e) => handleSecretChange('ntfy_password', e.target.value)}
+                  />
+                  {values.ntfy_password_configured && (
+                    <button className="btn" onClick={() => handleSecretClear('ntfy_password')}>Clear</button>
+                  )}
+                </div>
+                <p className="form-hint">Saved passwords are never returned to the browser.</p>
               </div>
             </>
           )}

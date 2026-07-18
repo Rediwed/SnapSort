@@ -6,7 +6,7 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci || npm install
+RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
@@ -14,7 +14,7 @@ RUN npm run build
 FROM node:20-alpine AS backend-deps
 WORKDIR /build
 COPY backend/package.json backend/package-lock.json* ./
-RUN npm ci --omit=dev || npm install --omit=dev
+RUN npm ci --omit=dev
 
 # ---- Stage 3: Final runtime image ----
 FROM node:20-alpine
@@ -40,9 +40,15 @@ COPY backend/src ./src
 COPY --from=frontend-build /build/dist ./public
 
 # Data directory for SQLite
-RUN mkdir -p /app/backend/data
+RUN mkdir -p /app/backend/data \
+	&& chown -R node:node /app
 
 VOLUME ["/app/backend/data"]
 EXPOSE 4000
+
+USER node
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+	CMD wget -q --spider http://127.0.0.1:4000/api/health || exit 1
 
 CMD ["node", "src/index.js"]

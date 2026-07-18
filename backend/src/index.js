@@ -7,11 +7,11 @@
  */
 
 const express = require('express');
-const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { initDb } = require('./db/schema');
+const { createAuthMiddleware, readAuthConfig } = require('./security/auth');
 const { initLogCapture, getRecentLogs, subscribe, unsubscribe } = require('./services/logBuffer');
 const { startCpuMonitor, getCpuHistory, getCpuCurrent, getMemHistory, getMemCurrent } = require('./services/cpuMonitor');
 
@@ -30,6 +30,14 @@ const profileRoutes = require('./routes/profiles');
 
 const PORT = process.env.PORT || 4000;
 const app = express();
+let authConfig;
+
+try {
+  authConfig = readAuthConfig();
+} catch (error) {
+  console.error(`Authentication configuration error: ${error.message}`);
+  process.exit(1);
+}
 
 /* Read version from VERSION file at startup */
 const APP_VERSION = (() => {
@@ -43,8 +51,17 @@ const APP_VERSION = (() => {
 /* ------------------------------------------------------------------ */
 /*  Middleware                                                         */
 /* ------------------------------------------------------------------ */
-app.use(cors());
+/* Health remains public for Docker and reverse-proxy health checks. */
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', version: APP_VERSION });
+});
+
+app.use(createAuthMiddleware(authConfig));
 app.use(express.json());
+
+if (!authConfig.enabled) {
+  console.warn('Authentication is disabled for non-production development.');
+}
 
 /* Simple HTTP request logger — appears in Docker container logs */
 app.use((req, res, next) => {
@@ -79,11 +96,6 @@ app.use('/api/filesystem', filesystemRoutes);
 app.use('/api/drives', drivesRoutes);
 app.use('/api/benchmarks', benchmarkRoutes);
 app.use('/api/profiles', profileRoutes);
-
-/* Health check */
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', version: APP_VERSION });
-});
 
 /* Recent logs — lets the web UI show backend output without SSH */
 app.get('/api/logs', (_req, res) => {

@@ -243,28 +243,28 @@ Docker packages everything SnapSort needs into a single container — no manual 
    cd SnapSort
    ```
 
-#### Configure your photo paths
+#### Configure paths and authentication
 
-Before starting, edit `docker-compose.yml` to mount the drives/folders you want SnapSort to access. The default looks like this:
+Copy the environment template and set your source, destination, and login:
 
-```yaml
-volumes:
-  - db-data:/app/backend/data         # persist SQLite database
-  - /mnt/user/photos:/mnt/photos      # ← change this to your photo folder
+```bash
+cp .env.example .env
 ```
 
-Replace `/mnt/user/photos` with the actual path on your system, e.g.:
-- **macOS**: `/Users/you/Pictures:/mnt/photos`
-- **Windows (WSL)**: `/mnt/c/Users/you/Pictures:/mnt/photos`
-- **Linux**: `/home/you/Pictures:/mnt/photos`
-
-You can add multiple volume mounts if you have photos on different drives:
-```yaml
-volumes:
-  - db-data:/app/backend/data
-  - /Volumes/ExternalHDD:/mnt/external:ro    # read-only source
-  - /Users/you/Pictures:/mnt/photos           # destination
+```dotenv
+SNAPSORT_SOURCE_PATH=/Volumes/ExternalHDD/Photos
+SNAPSORT_DESTINATION_PATH=/Users/you/Pictures/Organized
+SNAPSORT_AUTH_USERNAME=admin
+SNAPSORT_AUTH_PASSWORD=replace-with-at-least-16-characters
 ```
+
+SnapSort maps these to separate container paths:
+
+- `/mnt/source` is mounted **read-only**. Select this path when creating a job.
+- `/mnt/destination` is the only writable photo mount. Select this as the destination.
+- The web UI binds to `127.0.0.1:8080` by default. Set `SNAPSORT_BIND_ADDRESS=0.0.0.0` only when LAN access is required, and keep authentication enabled.
+
+Existing deployments that used one writable `/mnt/photos` mount must migrate to the two variables above. Source and destination directories must not overlap.
 
 #### Start SnapSort
 
@@ -272,7 +272,7 @@ volumes:
 docker compose up -d
 ```
 
-This builds the container on first run (takes a few minutes) and starts it in the background. Open [http://localhost:8080](http://localhost:8080) in your browser.
+This builds the container on first run (takes a few minutes) and starts it in the background. Open [http://localhost:8080](http://localhost:8080) and sign in with the configured username and password.
 
 | Command | What it does |
 |---------|-------------|

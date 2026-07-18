@@ -15,9 +15,9 @@ Status meanings:
 | ID | Finding | Status | Current work / remaining work |
 |---|---|---|---|
 | CA-01 | Benchmark request fields execute as Python | Done | Replaced generated source with `benchmark_runner.py`, strict bounded JSON input, and injection regression tests. |
-| CA-04 | Unauthenticated admin/filesystem API, wildcard CORS, secret disclosure | Pending | Add authentication, trusted origins, write-only masked secrets, and rate limiting. |
-| CA-03 | Source guards use the wrong scope and lexical paths | Partial | Canonical Node guard and benchmark known-source protection are covered. Still pass immutable `source_root` through Python, guard override writes, prevent cross-job overlap, and mount sources read-only. |
-| CA-17 | Container and supply-chain hardening | Pending | Run non-root, split source/destination mounts, pin dependencies/images, add health and resource controls. |
+| CA-04 | Unauthenticated admin/filesystem API, wildcard CORS, secret disclosure | Done | Production fails closed without Basic credentials, auth failures are throttled, CORS is removed, health alone is public, and ntfy secrets are write-only/masked. |
+| CA-03 | Source guards use the wrong scope and lexical paths | Partial | Canonical Node guards, benchmark protection, and read-only deployment mounts are covered. Still pass immutable `source_root` through Python, guard override writes, and prevent cross-job overlap. |
+| CA-17 | Container and supply-chain hardening | Partial | Runtime is non-root with read-only root FS, dropped capabilities, `no-new-privileges`, PID limit, tmpfs, split mounts, healthcheck, and strict `npm ci`. Pin base/Python dependencies and add broader resource limits. |
 
 ## P1 - Data Integrity
 
@@ -46,11 +46,11 @@ Status meanings:
 
 | ID | Finding | Status | Current work / remaining work |
 |---|---|---|---|
-| CA-18 | Compose image tag is stale (`1.1.0` vs `1.2.1`) | Pending | Wire deployment tag to the release version. |
+| CA-18 | Compose image tag is stale (`1.1.0` vs `1.2.1`) | Done | Compose and Unraid now default to `1.2.1`; Compose supports an explicit `SNAPSORT_VERSION` override. |
 | CA-19 | Immich risk was active, not dead code | Done | The full integration, auto-upload, binary, UI, routes, and stored credentials were removed coherently. |
 | CA-20 | No tests, CI, changelog, or release workflow | Partial | Node/Python regression suites and root `npm test` now exist. Add CI and initialize the standard release workflow separately. |
 | CA-21 | Keyboard and screen-reader accessibility gaps | Pending | Fix dialogs, tabs, clickable rows, sorting, selection, tooltips, and labels. |
-| CA-22 | Giant frontend components, duplicated utilities, exposed secret state | Partial | Immich secret state was removed. Mask ntfy secrets and split/shared frontend primitives. |
+| CA-22 | Giant frontend components, duplicated utilities, exposed secret state | Partial | Immich state was removed and ntfy secrets are write-only, explicitly clearable, and removed from React state after save. Split components and shared frontend primitives remain. |
 | CA-23 | Override counters drift for mixed skipped/scanned selections | Pending | Use exact transactional status deltas. |
 | CA-24 | Immich duplicate parser and upload timeout defects | Done | Removed with the Immich integration. |
 

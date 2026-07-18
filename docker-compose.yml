@@ -1,23 +1,38 @@
-version: "3.9"
-
 services:
   snapsort:
-    image: rediwed/snapsort:1.1.0
+    image: rediwed/snapsort:${SNAPSORT_VERSION:-1.2.1}
     build: .
     container_name: snapsort
     ports:
-      - "8080:4000"
+      - "${SNAPSORT_BIND_ADDRESS:-127.0.0.1}:${SNAPSORT_PORT:-8080}:4000"
     volumes:
       - db-data:/app/backend/data         # persist SQLite database
-      - /mnt/user/photos:/mnt/photos      # adjust to your photo share
+      - type: bind
+        source: ${SNAPSORT_SOURCE_PATH:?Set SNAPSORT_SOURCE_PATH to a source photo directory}
+        target: /mnt/source
+        read_only: true
+      - type: bind
+        source: ${SNAPSORT_DESTINATION_PATH:?Set SNAPSORT_DESTINATION_PATH to an organized-photo directory}
+        target: /mnt/destination
       # Optional: mount external/unallocated disks (Unraid Unassigned Devices plugin)
       # Uses :rslave so drives mounted on the host after start are visible.
-      # - /mnt/disks:/mnt/disks:rslave
+      # - /mnt/disks:/mnt/disks:ro,rslave
       # Optional: mount all user shares (read-only)
       # - /mnt/user:/mnt/user:ro,rslave
     environment:
-      - NODE_ENV=production
-      - PORT=4000
+      NODE_ENV: production
+      PORT: 4000
+      PYTHONDONTWRITEBYTECODE: 1
+      SNAPSORT_AUTH_USERNAME: ${SNAPSORT_AUTH_USERNAME:?Set SNAPSORT_AUTH_USERNAME}
+      SNAPSORT_AUTH_PASSWORD: ${SNAPSORT_AUTH_PASSWORD:?Set a password of at least 16 characters}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     restart: unless-stopped
 
 volumes:

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>SnapSort</Name>
-  <Repository>rediwed/snapsort:latest</Repository>
+  <Repository>rediwed/snapsort:1.2.1</Repository>
   <Registry>https://hub.docker.com/r/rediwed/snapsort/</Registry>
   <Network>bridge</Network>
   <MyIP/>
@@ -19,7 +19,7 @@
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL/>
   <Icon>https://raw.githubusercontent.com/Rediwed/SnapSort/main/frontend/public/icon.png</Icon>
-  <ExtraParams>--mount type=bind,source=/mnt/disks,target=/mnt/disks,bind-propagation=rslave --mount type=bind,source=/mnt/remotes,target=/mnt/remotes,bind-propagation=rslave</ExtraParams>
+  <ExtraParams>--read-only --tmpfs /tmp:rw,noexec,nosuid,size=1g --cap-drop=ALL --security-opt=no-new-privileges --pids-limit=256 --mount type=bind,source=/mnt/disks,target=/mnt/disks,readonly,bind-propagation=rslave --mount type=bind,source=/mnt/remotes,target=/mnt/remotes,readonly,bind-propagation=rslave</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
@@ -39,17 +39,29 @@
     Required="true"
     Mask="false">8080</Config>
 
-  <!-- Photos directory — point this at your photo share -->
+  <!-- Source photos are always mounted read-only -->
   <Config
-    Name="Photos"
-    Target="/mnt/photos"
-    Default="/mnt/user/photos"
-    Mode="rw"
-    Description="Path to your photos share (contains source and dest sub-folders)"
+    Name="Source Photos (Read Only)"
+    Target="/mnt/source"
+    Default="/mnt/user/photos/source"
+    Mode="ro"
+    Description="Source photo directory. SnapSort can read but cannot modify this mount."
     Type="Path"
     Display="always"
     Required="true"
-    Mask="false">/mnt/user/photos</Config>
+    Mask="false">/mnt/user/photos/source</Config>
+
+  <!-- Organized output is the only writable photo mount -->
+  <Config
+    Name="Destination Photos"
+    Target="/mnt/destination"
+    Default="/mnt/user/photos/organized"
+    Mode="rw"
+    Description="Writable destination for organized photos. Must not overlap the source."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/photos/organized</Config>
 
   <!-- External / unallocated disks (requires Unassigned Devices plugin)
        Mount propagation is handled via ExtraParams above for rslave support.
@@ -58,8 +70,8 @@
     Name="External/Unallocated Disks"
     Target="/mnt/disks"
     Default="/mnt/disks"
-    Mode="rw,rslave"
-    Description="Mount unassigned/external drives so SnapSort can read from USB, SATA, or NVMe drives not in the array. Uses rslave propagation so hot-plugged drives appear automatically."
+    Mode="ro,rslave"
+    Description="Read-only external drives for source scanning. Uses rslave propagation so hot-plugged drives appear automatically."
     Type="Path"
     Display="always"
     Required="false"
@@ -90,6 +102,39 @@
     Mask="false">/mnt/user/appdata/snapsort</Config>
 
   <!-- Environment -->
+  <Config
+    Name="Web Username"
+    Target="SNAPSORT_AUTH_USERNAME"
+    Default="admin"
+    Mode=""
+    Description="Username required to access SnapSort."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false">admin</Config>
+
+  <Config
+    Name="Web Password"
+    Target="SNAPSORT_AUTH_PASSWORD"
+    Default=""
+    Mode=""
+    Description="Password required to access SnapSort (minimum 16 characters)."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"></Config>
+
+  <Config
+    Name="PYTHONDONTWRITEBYTECODE"
+    Target="PYTHONDONTWRITEBYTECODE"
+    Default="1"
+    Mode=""
+    Description="Prevents writes to the read-only application filesystem."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">1</Config>
+
   <Config
     Name="NODE_ENV"
     Target="NODE_ENV"

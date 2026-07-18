@@ -87,6 +87,7 @@ push.sh
 # ── Security: environment & secrets ────────────────────
 .env
 .env.*
+!.env.example
 
 # Private keys & certificates
 *.pem
