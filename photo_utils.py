@@ -6,6 +6,7 @@ Utility functions for photo metadata extraction and manipulation.
 
 import os
 import shutil
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -124,6 +125,44 @@ def _resolve_match_path(dedup_match):
     )
 
 
+def _atomic_copy(src_path, final_path):
+    """Copy *src_path* to *final_path* atomically.
+
+    Writes to a temporary ``.snapsort-part-*.tmp`` file in the destination
+    directory, fsyncs it, verifies its size, then ``os.replace()``s it into
+    place and fsyncs the directory. The partial file is removed on failure so a
+    crash or cancellation can never leave a corrupt file in the library. The
+    ``.tmp`` suffix keeps partials out of the supported-extension scan/seed.
+    """
+    dest_dir = os.path.dirname(final_path)
+    tmp_path = os.path.join(dest_dir, f".snapsort-part-{uuid.uuid4().hex}.tmp")
+    try:
+        with open(src_path, "rb") as src, open(tmp_path, "wb") as dst:
+            shutil.copyfileobj(src, dst, length=1024 * 1024)
+            dst.flush()
+            os.fsync(dst.fileno())
+        # Preserve mtime/permissions (parity with the previous shutil.copy2).
+        shutil.copystat(src_path, tmp_path)
+        if os.path.getsize(tmp_path) != os.path.getsize(src_path):
+            raise IOError("size mismatch after copy")
+        os.replace(tmp_path, final_path)
+        try:
+            dir_fd = os.open(dest_dir, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+    except Exception:
+        try:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def copy_photo_with_metadata(
     src_path,
     dest_dir,
@@ -139,6 +178,7 @@ def copy_photo_with_metadata(
     force_copy=False,
     dedup_index=None,
     copy_semaphore=None,
+    source_root=None,
 ):
     """Copy a photo to the destination directory with metadata extraction and renaming.
 
@@ -149,22 +189,22 @@ def copy_photo_with_metadata(
     width = None
     height = None
 
-    # ── Source-safety check: source and destination must be completely disjoint ──
-    _src_dir = os.path.dirname(os.path.abspath(src_path))
-    _dest_resolved = os.path.abspath(dest_dir)
-    if _dest_resolved == _src_dir:
-        raise RuntimeError(
-            f"SOURCE SAFETY VIOLATION: destination '{dest_dir}' is the same as "
-            f"source directory '{_src_dir}'. SnapSort never writes to source directories."
-        )
-    if _dest_resolved.startswith(_src_dir + os.sep):
+    # ── Source-safety check: destination must be disjoint from the SOURCE ROOT ──
+    # Compare against the configured (canonicalized) source root rather than the
+    # file's immediate parent, so a file deep in the source tree can never be
+    # written to another location inside that same source tree. realpath() also
+    # resolves symlinks, closing symlink-alias bypasses.
+    _dest_real = os.path.realpath(dest_dir)
+    _root = source_root if source_root else os.path.dirname(src_path)
+    _src_real = os.path.realpath(_root)
+    if _dest_real == _src_real or _dest_real.startswith(_src_real + os.sep):
         raise RuntimeError(
             f"SOURCE SAFETY VIOLATION: destination '{dest_dir}' is inside source "
-            f"directory '{_src_dir}'. SnapSort never writes to source directories."
+            f"root '{_src_real}'. SnapSort never writes to source directories."
         )
-    if _src_dir.startswith(_dest_resolved + os.sep):
+    if _src_real.startswith(_dest_real + os.sep):
         raise RuntimeError(
-            f"SOURCE SAFETY VIOLATION: source directory '{_src_dir}' is inside "
+            f"SOURCE SAFETY VIOLATION: source root '{_src_real}' is inside "
             f"destination '{dest_dir}'. This would cause re-processing of output."
         )
 
@@ -255,8 +295,7 @@ def copy_photo_with_metadata(
     # destination — is recorded in the dedup index and surfaced on the
     # Duplicates page.
     dedup_record = None
-    dedup_match = None
-    dedup_score = 0.0
+    match_path = None
     if dedup_index:
         try:
             dedup_record = dedup_index.build_record(
@@ -268,18 +307,19 @@ def copy_photo_with_metadata(
             )
         except Exception:
             dedup_record = None
-        if dedup_record:
-            dedup_score, dedup_match = dedup_index.find_best_match(dedup_record)
-            dedup_record["similarity"] = dedup_score
-            if dedup_match:
-                dedup_record["matched_record_id"] = dedup_match.get("_id")
-                dedup_record["matched_src_path"] = dedup_match.get("src_path")
-                dedup_record["matched_final_path"] = dedup_match.get("final_path")
-            strict_threshold = getattr(dedup_index, "strict_threshold", 100.0)
-            log_threshold = getattr(dedup_index, "log_threshold", 0.0)
-            match_path = _resolve_match_path(dedup_match)
 
-            if dedup_match and dedup_score >= strict_threshold and not force_copy:
+    if dedup_index and dedup_record:
+        dedup_score, dedup_match, reserved = dedup_index.find_and_reserve(dedup_record)
+        log_threshold = getattr(dedup_index, "log_threshold", 0.0)
+        match_path = _resolve_match_path(dedup_match)
+        if dedup_match:
+            dedup_record["matched_record_id"] = dedup_match.get("_id")
+            dedup_record["matched_src_path"] = dedup_match.get("src_path")
+            dedup_record["matched_final_path"] = dedup_match.get("final_path")
+
+        if not reserved:
+            # Strict duplicate, detected atomically under the index lock.
+            if not force_copy:
                 log_message_func(
                     f"Skipped (duplicate {dedup_score:.1f}% similarity): {src_path}"
                     + (f" matches {match_path}" if match_path else "")
@@ -295,19 +335,20 @@ def copy_photo_with_metadata(
                 dedup_record["final_path"] = match_path
                 dedup_index.add_record(dedup_record)
                 return "skipped", match_path
-
-            if dedup_match and dedup_score >= log_threshold:
-                log_message_func(
-                    f"Potential duplicate ({dedup_score:.1f}% similarity): {src_path}"
-                    + (f" ~ {match_path}" if match_path else "")
+            # force_copy: reserve so later files still match it, then copy.
+            dedup_index.reserve(dedup_record)
+        elif dedup_match and dedup_score >= log_threshold:
+            log_message_func(
+                f"Potential duplicate ({dedup_score:.1f}% similarity): {src_path}"
+                + (f" ~ {match_path}" if match_path else "")
+            )
+            if enable_csv_log:
+                log_csv_func(
+                    "notice",
+                    f"potential duplicate {dedup_score:.1f}%",
+                    src_path,
+                    match_path or "",
                 )
-                if enable_csv_log:
-                    log_csv_func(
-                        "notice",
-                        f"potential duplicate {dedup_score:.1f}%",
-                        src_path,
-                        match_path or "",
-                    )
 
     # ── Step 2: File-exists safety net ──────────────────────────────
     # If an identical file already sits at the destination path, skip
@@ -320,42 +361,48 @@ def copy_photo_with_metadata(
             log_message_func(f"Skipped (already exists, identical): {src_path}")
             if enable_csv_log:
                 log_csv_func("skipped", "already exists, identical", src_path, dest_path)
-            # Record in dedup index so Duplicates page shows it
             if dedup_index and dedup_record:
-                dedup_record["status"] = "skipped_duplicate"
-                dedup_record["similarity"] = 100.0
-                dedup_record["matched_final_path"] = dest_path
-                dedup_record["final_path"] = dest_path
-                dedup_index.add_record(dedup_record)
+                dedup_index.update_record(
+                    dedup_record,
+                    status="skipped_duplicate",
+                    similarity=100.0,
+                    matched_final_path=dest_path,
+                    final_path=dest_path,
+                )
             return "skipped", dest_path
-        base, ext = os.path.splitext(os.path.basename(dest_path))
-        timestamp = date_taken.strftime("%Y%m%d_%H%M%S")
-        dest_path = os.path.join(os.path.dirname(dest_path), f"{base}_{timestamp}{ext}")
+
+    # Reserve a collision-safe destination path (thread-safe when a dedup index is present).
+    if dedup_index:
+        final_path = dedup_index.claim_dest_path(dest_path)
+    else:
+        final_path = dest_path
+        if os.path.exists(final_path):
+            base, ext = os.path.splitext(os.path.basename(final_path))
+            timestamp = date_taken.strftime("%Y%m%d_%H%M%S")
+            final_path = os.path.join(os.path.dirname(final_path), f"{base}_{timestamp}{ext}")
 
     try:
-        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        os.makedirs(os.path.dirname(final_path), exist_ok=True)
         if copy_semaphore:
             copy_semaphore.acquire()
         try:
-            shutil.copy2(src_path, dest_path)
+            _atomic_copy(src_path, final_path)
         finally:
             if copy_semaphore:
                 copy_semaphore.release()
-        file_size = os.path.getsize(dest_path)
-        log_message_func(f"Copied: {src_path} -> {dest_path}")
+        file_size = os.path.getsize(final_path)
+        log_message_func(f"Copied: {src_path} -> {final_path}")
         if enable_csv_log:
-            log_csv_func("copied", "success", src_path, dest_path, file_size)
+            log_csv_func("copied", "success", src_path, final_path, file_size)
         if dedup_index and dedup_record:
-            dedup_record["status"] = "copied"
-            dedup_record["final_path"] = dest_path
-            dedup_index.add_record(dedup_record)
-        return "copied", dest_path
+            dedup_index.update_record(dedup_record, status="copied", final_path=final_path)
+        return "copied", final_path
     except Exception as exc:
         log_message_func(f"Error copying {src_path}: {exc}")
         if enable_csv_log:
-            log_csv_func("error", str(exc), src_path, dest_path)
+            log_csv_func("error", str(exc), src_path, final_path)
+        if dedup_index:
+            dedup_index.release_dest_path(final_path)
         if dedup_index and dedup_record:
-            dedup_record["status"] = "error"
-            dedup_record["final_path"] = dest_path
-            dedup_index.add_record(dedup_record)
+            dedup_index.update_record(dedup_record, status="error", final_path=final_path)
         return "error", None

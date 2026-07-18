@@ -74,6 +74,11 @@ class DeduplicationIndex:
 
         self._lock = threading.Lock()
 
+        # Reservation of destination paths so concurrent workers never choose
+        # the same output filename (see claim_dest_path / release_dest_path).
+        self._dest_lock = threading.Lock()
+        self._claimed_paths: Set[str] = set()
+
         self._by_partial_hash: Dict[str, Set[int]] = defaultdict(set)
         self._by_size_exact: Dict[int, Set[int]] = defaultdict(set)
         self._by_size_bucket: Dict[int, Set[int]] = defaultdict(set)
@@ -118,54 +123,130 @@ class DeduplicationIndex:
         Thread-safe: acquires the internal lock while traversing the index.
         """
         with self._lock:
-            candidate_ids = self._gather_candidate_ids(record)
-            best_score = 0.0
-            best_record: Optional[Dict[str, object]] = None
+            return self._find_best_match_locked(record)
 
-            for candidate_id in candidate_ids:
-                candidate = self._records.get(candidate_id)
-                if not candidate:
-                    continue
-                if candidate.get("src_path") == record.get("src_path"):
-                    continue
-                score = self._calculate_similarity(record, candidate)
-                if score > best_score:
-                    best_score = score
-                    best_record = candidate
-            return best_score, best_record
+    def _find_best_match_locked(
+        self, record: Dict[str, object]
+    ) -> Tuple[float, Optional[Dict[str, object]]]:
+        """Core matching logic. Caller MUST hold ``self._lock``."""
+        candidate_ids = self._gather_candidate_ids(record)
+        best_score = 0.0
+        best_record: Optional[Dict[str, object]] = None
+
+        for candidate_id in candidate_ids:
+            candidate = self._records.get(candidate_id)
+            if not candidate:
+                continue
+            if candidate.get("src_path") == record.get("src_path"):
+                continue
+            score = self._calculate_similarity(record, candidate)
+            if score > best_score:
+                best_score = score
+                best_record = candidate
+        return best_score, best_record
 
     def add_record(self, record: Dict[str, object]) -> int:
         """Persist *record* in the index and return its identifier.
 
         Thread-safe: acquires the internal lock while mutating the index.
+        A shallow copy is stored so the caller's dict is not aliased.
         """
         with self._lock:
-            record = dict(record)
-            record_id = self._next_id
-            self._next_id += 1
-            record["_id"] = record_id
-            self._records[record_id] = record
+            return self._add_record_locked(dict(record))
 
-            partial_hash = record.get("partial_hash")
-            if isinstance(partial_hash, str):
-                self._by_partial_hash[partial_hash].add(record_id)
+    def _add_record_locked(self, record: Dict[str, object]) -> int:
+        """Index *record* in place. Caller MUST hold ``self._lock``.
 
-            size = record.get("size")
-            if isinstance(size, int):
-                self._by_size_exact[size].add(record_id)
-                bucket = size // self._size_bucket_bytes
-                for neighbor in (bucket - 1, bucket, bucket + 1):
-                    self._by_size_bucket[neighbor].add(record_id)
+        The exact dict passed is stored (not copied), so callers that hold a
+        reference can later mutate it via ``update_record``.
+        """
+        record_id = self._next_id
+        self._next_id += 1
+        record["_id"] = record_id
+        self._records[record_id] = record
 
-            resolution = record.get("resolution")
-            if isinstance(resolution, int) and resolution > 0:
-                self._by_resolution[resolution].add(record_id)
+        partial_hash = record.get("partial_hash")
+        if isinstance(partial_hash, str):
+            self._by_partial_hash[partial_hash].add(record_id)
 
-            normalized_name = record.get("normalized_name")
-            if isinstance(normalized_name, str) and normalized_name:
-                self._by_name[normalized_name].add(record_id)
+        size = record.get("size")
+        if isinstance(size, int):
+            self._by_size_exact[size].add(record_id)
+            bucket = size // self._size_bucket_bytes
+            for neighbor in (bucket - 1, bucket, bucket + 1):
+                self._by_size_bucket[neighbor].add(record_id)
 
-            return record_id
+        resolution = record.get("resolution")
+        if isinstance(resolution, int) and resolution > 0:
+            self._by_resolution[resolution].add(record_id)
+
+        normalized_name = record.get("normalized_name")
+        if isinstance(normalized_name, str) and normalized_name:
+            self._by_name[normalized_name].add(record_id)
+
+        return record_id
+
+    def find_and_reserve(
+        self, record: Dict[str, object]
+    ) -> Tuple[float, Optional[Dict[str, object]], bool]:
+        """Atomically find the best match and, unless *record* is a strict
+        duplicate, reserve (register) it so concurrent workers see it at once.
+
+        This closes the check-then-register race: two byte-identical files
+        processed on different threads can no longer both "see no match".
+
+        Returns ``(score, match, reserved)``. When *reserved* is True the exact
+        dict passed is stored in the index, so later ``update_record`` calls
+        mutate the indexed record.
+        """
+        with self._lock:
+            score, match = self._find_best_match_locked(record)
+            record["similarity"] = score
+            if match is not None and score >= self.strict_threshold:
+                return score, match, False
+            self._add_record_locked(record)
+            return score, match, True
+
+    def reserve(self, record: Dict[str, object]) -> int:
+        """Reserve *record* by reference without duplicate-checking.
+
+        Used when force-copying a strict duplicate: the record must still be
+        registered so subsequent files can match against it.
+        """
+        with self._lock:
+            return self._add_record_locked(record)
+
+    def update_record(self, record: Dict[str, object], **fields: object) -> None:
+        """Thread-safely update fields on an already-reserved record."""
+        with self._lock:
+            for key, value in fields.items():
+                record[key] = value
+
+    def claim_dest_path(self, preferred: str) -> str:
+        """Reserve a destination path that is unique across threads and not
+        already present on disk. Returns the claimed path (possibly suffixed).
+
+        Prevents two source files that resolve to the same destination from
+        both observing "absent" and overwriting the same output file.
+        """
+        with self._dest_lock:
+            candidate = preferred
+            if candidate not in self._claimed_paths and not os.path.exists(candidate):
+                self._claimed_paths.add(candidate)
+                return candidate
+            base, ext = os.path.splitext(preferred)
+            counter = 1
+            while True:
+                candidate = f"{base}_{counter}{ext}"
+                if candidate not in self._claimed_paths and not os.path.exists(candidate):
+                    self._claimed_paths.add(candidate)
+                    return candidate
+                counter += 1
+
+    def release_dest_path(self, path: str) -> None:
+        """Release a previously claimed destination path (e.g. after a failed copy)."""
+        with self._dest_lock:
+            self._claimed_paths.discard(path)
 
     def seed_from_directory(
         self,

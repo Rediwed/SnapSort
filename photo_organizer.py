@@ -245,7 +245,7 @@ def scan_and_organize_photos(processed_set=None):
                     src_path, DEST_DIR, MIN_WIDTH, MIN_HEIGHT, MIN_FILESIZE,
                     SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
                     hash_func, log_csv, log_message,
-                    dedup_index=dedup_index
+                    dedup_index=dedup_index, source_root=SOURCE_DIR
                 )
                 if result == "copied":
                     images_copied += 1
@@ -339,7 +339,7 @@ def manual_copy_from_csv():
             SUPPORTED_EXTENSIONS, SYSTEM_FOLDERS, ENABLE_CSV_LOG,
             hash_func, log_csv, log_message,
             force_copy=(row.get('copy_anyway', '').strip().lower() in ['yes', '1']),
-            dedup_index=dedup_index
+            dedup_index=dedup_index, source_root=SOURCE_DIR
         )
         if result == "copied":
             copied += 1
@@ -452,7 +452,8 @@ def optimized_directory_scan(source_dir, supported_extensions, progress_callback
 
 def process_single_file(src_path, dest_dir, min_width, min_height,
                         min_filesize, supported_extensions, system_folders,
-                        hash_func, dedup_index, copy_semaphore=None):
+                        hash_func, dedup_index, copy_semaphore=None,
+                        source_root=None):
     """Process one photo file — extract metadata, copy, and return a result dict.
 
     The result dict always contains:
@@ -497,6 +498,7 @@ def process_single_file(src_path, dest_dir, min_width, min_height,
             hash_func, log_csv, _log,
             dedup_index=dedup_index,
             copy_semaphore=copy_semaphore,
+            source_root=source_root,
         )
         result["status"] = status
         result["dest_path"] = dest_path
@@ -926,6 +928,7 @@ def json_mode():
             hash_func=hash_func,
             dedup_index=dedup_index,
             copy_semaphore=_copy_semaphore,
+            source_root=SOURCE_DIR,
         )
 
         if use_threading and total_files > 0:
