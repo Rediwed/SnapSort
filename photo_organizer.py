@@ -650,7 +650,9 @@ def scan_single_file(src_path, hash_func, dedup_index):
     except Exception:
         pass
 
-    # Duplicate detection against destination index
+    # Duplicate detection against the shared index. We reserve the source
+    # record too (find_and_reserve) so source-to-source duplicates are detected
+    # even when the destination is empty.
     if dedup_index and result["hash"]:
         try:
             rec = dedup_index.build_record(
@@ -659,7 +661,7 @@ def scan_single_file(src_path, hash_func, dedup_index):
                 height=result["height"],
                 date_taken=datetime.fromisoformat(result["date_taken"]) if result["date_taken"] else None,
             )
-            score, matched = dedup_index.find_best_match(rec)
+            score, matched, _reserved = dedup_index.find_and_reserve(rec)
             _log_thr = getattr(dedup_index, 'log_threshold', 70.0)
             if matched and score >= _log_thr:
                 result["similarity"] = float(score)

@@ -15,6 +15,11 @@ from PIL import Image
 
 JPEG_TIFF_EXTENSIONS = (".jpg", ".jpeg", ".tif", ".tiff")
 
+# Raster formats Pillow is expected to open. A failure to open one of these is a
+# genuinely broken image (error); failures on other extensions (e.g. RAW) fall
+# through to metadata/hash-based processing with dimensions simply unavailable.
+_PILLOW_RASTER_EXTS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff")
+
 
 def get_exif_with_exiftool(filepath):
     """Retrieve EXIF data from an image file using ExifTool."""
@@ -263,7 +268,7 @@ def copy_photo_with_metadata(
         try:
             with Image.open(src_path) as img:
                 width, height = img.size
-                if width < min_width and height < min_height:
+                if width < min_width or height < min_height:
                     log_message_func(f"Skipped (resolution too small): {src_path}")
                     if enable_csv_log:
                         log_csv_func(
@@ -273,10 +278,16 @@ def copy_photo_with_metadata(
                         )
                     return "skipped", None
         except Exception:
-            log_message_func(f"Error (cannot open image): {src_path}")
-            if enable_csv_log:
-                log_csv_func("error", "cannot open image", src_path)
-            return "error", None
+            # Formats Pillow cannot open (many RAW types) are not errors: continue
+            # with metadata/hash-based processing (dimensions simply unavailable).
+            # Only a format Pillow *should* handle is treated as a broken image.
+            _ext = os.path.splitext(src_path)[1].lower()
+            if _ext in _PILLOW_RASTER_EXTS:
+                log_message_func(f"Error (cannot open image): {src_path}")
+                if enable_csv_log:
+                    log_csv_func("error", "cannot open image", src_path)
+                return "error", None
+            width = height = None
 
     date_taken = extract_date_taken(src_path)
     if not date_taken:

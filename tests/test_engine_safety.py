@@ -123,6 +123,47 @@ def test_dedup_race_two_identical_concurrent():
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+def test_resolution_or_filter_rejects_narrow_image():
+    """A 400x1000 image must be skipped under a 600x600 minimum (OR semantics)."""
+    workdir = Path(tempfile.mkdtemp())
+    try:
+        source = workdir / "src"
+        img = source / "narrow.jpg"
+        _make_image(img, (10, 10, 10), size=(400, 1000))
+        dest = workdir / "dst"
+        dest.mkdir()
+        status, _ = photo_utils.copy_photo_with_metadata(
+            str(img), str(dest), 600, 600, 0,
+            (".jpg",), frozenset(), False,
+            lambda p: "h", lambda *a, **k: None, lambda *a, **k: None,
+            source_root=str(source),
+        )
+        assert status == "skipped", f"expected skip for 400x1000 under 600x600, got {status}"
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def test_scan_mode_detects_source_duplicates():
+    """Two identical source files in scan mode: the second is flagged a duplicate."""
+    import photo_organizer as po
+    from dedup_utils import DeduplicationIndex
+    workdir = Path(tempfile.mkdtemp())
+    try:
+        first = workdir / "a.jpg"
+        _make_image(first, (30, 60, 90))
+        second = workdir / "b.jpg"
+        shutil.copy2(first, second)
+        idx = DeduplicationIndex(strict_threshold=90, log_threshold=70)
+        r1 = po.scan_single_file(str(first), po.file_hash_fast, idx)
+        r2 = po.scan_single_file(str(second), po.file_hash_fast, idx)
+        assert r1["similarity"] is None, "first file should have no match"
+        assert r2["similarity"] is not None and r2["similarity"] >= 70, (
+            f"scan mode failed to detect source-to-source duplicate: {r2}"
+        )
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_source_root_guard_blocks_write_inside_source()
     print("PASS  source_root_guard_blocks_write_inside_source")
@@ -130,4 +171,8 @@ if __name__ == "__main__":
     print("PASS  atomic_copy_identical_and_no_partial")
     test_dedup_race_two_identical_concurrent()
     print("PASS  dedup_race_two_identical_concurrent")
+    test_resolution_or_filter_rejects_narrow_image()
+    print("PASS  resolution_or_filter_rejects_narrow_image")
+    test_scan_mode_detects_source_duplicates()
+    print("PASS  scan_mode_detects_source_duplicates")
     print("ALL PASS")
