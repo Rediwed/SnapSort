@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchSettings, fetchSystemInfo, updateSettings, fetchProfiles, updateProfile, createProfile, deleteProfile, sendNtfyTest, sendBrowserNotifyTest, testImmichConnection, fetchImmichGoStatus } from '../api';
-import { Check, Bell, Monitor, Send, Save, Undo2, Plus, Trash2, Copy, Settings as SettingsIcon, Upload } from 'lucide-react';
+import { fetchSettings, fetchSystemInfo, updateSettings, fetchProfiles, updateProfile, createProfile, deleteProfile, sendNtfyTest, sendBrowserNotifyTest } from '../api';
+import { Check, Bell, Monitor, Send, Save, Undo2, Plus, Trash2, Copy, Settings as SettingsIcon } from 'lucide-react';
 import PillTabs from '../components/PillTabs';
 import Modal from '../components/Modal';
 import InfoTip from '../components/InfoTip';
@@ -12,7 +12,6 @@ const SETTINGS_TABS = [
   { value: 'filters',       label: 'Filters & Formats' },
   { value: 'performance',   label: 'Performance' },
   { value: 'notifications', label: 'Notifications' },
-  { value: 'immich',        label: 'Immich' },
 ];
 
 const DEFAULT_EXTENSIONS = [
@@ -49,15 +48,11 @@ export default function Settings() {
   const [newProfileBase, setNewProfileBase] = useState('default');
   const initialProfileLoad = useRef(false);
   const [cpuCount, setCpuCount] = useState(4);
-  const [immichTesting, setImmichTesting] = useState(false);
-  const [immichTestResult, setImmichTestResult] = useState(null);
-  const [immichGoStatus, setImmichGoStatus] = useState(null);
 
   useEffect(() => {
     fetchSettings().then((s) => { setValues(s); setSavedValues(s); }).catch(console.error);
     fetchProfiles().then(setProfiles).catch(console.error);
     fetchSystemInfo().then((info) => setCpuCount(info.cpu_count)).catch(() => {});
-    fetchImmichGoStatus().then(setImmichGoStatus).catch(() => setImmichGoStatus({ available: false }));
   }, []);
 
   /* Initialize editing profile when data first loads */
@@ -166,26 +161,6 @@ export default function Settings() {
 
   const resetExts = () => {
     handleChange('supported_extensions', DEFAULT_EXTENSIONS.join(','));
-  };
-
-  const handleImmichTest = async () => {
-    setImmichTesting(true);
-    setImmichTestResult(null);
-    try {
-      const result = await testImmichConnection(
-        values.immich_server,
-        values.immich_api_key
-      );
-      if (result.ok) {
-        setImmichTestResult({ ok: true, message: result.user || 'Connected' });
-      } else {
-        setImmichTestResult({ ok: false, message: result.error || 'Connection failed' });
-      }
-    } catch (err) {
-      setImmichTestResult({ ok: false, message: err.message || 'Connection failed' });
-    }
-    setImmichTesting(false);
-    setTimeout(() => setImmichTestResult(null), 8000);
   };
 
   const handleNtfyTest = async () => {
@@ -853,21 +828,6 @@ export default function Settings() {
               </label>
             </div>
 
-            <div className="form-group">
-              <label className="form-toggle">
-                <input
-                  type="checkbox"
-                  checked={values.ntfy_on_immich_upload === 'true'}
-                  onChange={(e) => handleChange('ntfy_on_immich_upload', e.target.checked ? 'true' : 'false')}
-                  disabled={(values.ntfy_enabled !== 'true' && values.browser_notify_enabled !== 'true') || values.immich_enabled !== 'true'}
-                />
-                <span>Immich Upload Start / Complete / Error</span>
-              </label>
-              {values.immich_enabled !== 'true' && (
-                <p className="form-hint" style={{ opacity: 0.5 }}>Enable Immich integration in the Immich tab first.</p>
-              )}
-            </div>
-
             <hr style={{ border: 'none', borderTop: '1px solid var(--border)' }} />
 
             <div className="form-group">
@@ -1137,134 +1097,6 @@ export default function Settings() {
           </p>
         </div>
         </div>{/* end settings-cards-grid */}
-        </>}
-
-        {activeTab === 'immich' && <>
-        <div className="settings-cards-grid">
-          {/* ── Card 1: Immich Connection ─────────────────── */}
-          <div className="card">
-            <div className="card-header">
-              <h3><Upload size={16} style={{ marginRight: 6, verticalAlign: -2 }} />Immich Connection</h3>
-            </div>
-
-            <div className="form-group">
-              <label className="form-toggle">
-                <input
-                  type="checkbox"
-                  checked={values.immich_enabled === 'true'}
-                  onChange={(e) => handleChange('immich_enabled', e.target.checked ? 'true' : 'false')}
-                />
-                <span>Enable Immich Integration</span>
-              </label>
-              <p className="form-hint">Upload organized photos directly to your Immich server after a job completes.</p>
-            </div>
-
-            {values.immich_enabled === 'true' && (
-              <>
-                <div className="form-group">
-                  <label>Server URL</label>
-                  <input
-                    className="form-input mono"
-                    placeholder="http://immich:2283"
-                    value={values.immich_server || ''}
-                    onChange={(e) => handleChange('immich_server', e.target.value)}
-                  />
-                  <p className="form-hint">Your Immich instance URL. In Docker, use the container hostname (e.g. http://immich-server:2283).</p>
-                </div>
-
-                <div className="form-group">
-                  <label>API Key</label>
-                  <input
-                    className="form-input mono"
-                    type="password"
-                    placeholder="Your Immich API key"
-                    value={values.immich_api_key || ''}
-                    onChange={(e) => handleChange('immich_api_key', e.target.value)}
-                  />
-                  <p className="form-hint">Generate at Immich → Account Settings → API Keys.</p>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    className="btn sm"
-                    disabled={immichTesting || !values.immich_server || !values.immich_api_key}
-                    onClick={handleImmichTest}
-                  >
-                    {immichTesting ? 'Testing…' : 'Test Connection'}
-                  </button>
-                  {immichTestResult && (
-                    <span style={{ fontSize: 12, color: immichTestResult.ok ? 'var(--green)' : 'var(--red)' }}>
-                      {immichTestResult.ok ? `✅ ${immichTestResult.message}` : `❌ ${immichTestResult.message}`}
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* immich-go status */}
-            <div style={{ marginTop: 16, padding: '8px 12px', borderRadius: 'var(--radius)', background: 'var(--bg-active)', fontSize: 12 }}>
-              <span style={{ opacity: 0.6 }}>immich-go: </span>
-              {immichGoStatus === null
-                ? <span style={{ opacity: 0.4 }}>checking…</span>
-                : immichGoStatus.available
-                  ? <span style={{ color: 'var(--green)' }}>✅ {immichGoStatus.version || 'installed'}</span>
-                  : <span style={{ color: 'var(--red)' }}>❌ Not found — <a href="https://github.com/simulot/immich-go" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>install immich-go</a></span>
-              }
-            </div>
-          </div>
-
-          {/* ── Card 2: Upload Settings ──────────────────── */}
-          <div className="card">
-            <div className="card-header">
-              <h3>Upload Settings</h3>
-            </div>
-
-            <div className="form-group">
-              <label className="form-toggle">
-                <input
-                  type="checkbox"
-                  checked={values.immich_auto_upload === 'true'}
-                  onChange={(e) => handleChange('immich_auto_upload', e.target.checked ? 'true' : 'false')}
-                  disabled={values.immich_enabled !== 'true'}
-                />
-                <span>Auto-upload after job completion</span>
-              </label>
-              <p className="form-hint">Automatically start uploading to Immich when a job finishes organizing photos.</p>
-            </div>
-
-            <div className="form-group">
-              <label>Album Mode</label>
-              <select
-                className="form-select"
-                value={values.immich_album_mode || 'none'}
-                onChange={(e) => handleChange('immich_album_mode', e.target.value)}
-                disabled={values.immich_enabled !== 'true'}
-              >
-                <option value="none">No album</option>
-                <option value="job_name">Job name as album</option>
-                <option value="folder_as_album">Folder as album</option>
-              </select>
-              <p className="form-hint">
-                {(values.immich_album_mode || 'none') === 'none' && 'Photos are uploaded without album assignment.'}
-                {values.immich_album_mode === 'job_name' && 'Creates an Immich album named after the SnapSort job.'}
-                {values.immich_album_mode === 'folder_as_album' && 'Each subfolder in the destination becomes an Immich album.'}
-              </p>
-            </div>
-
-            <div className="form-group">
-              <label className="form-toggle">
-                <input
-                  type="checkbox"
-                  checked={values.immich_dry_run === 'true'}
-                  onChange={(e) => handleChange('immich_dry_run', e.target.checked ? 'true' : 'false')}
-                  disabled={values.immich_enabled !== 'true'}
-                />
-                <span>Dry Run</span>
-              </label>
-              <p className="form-hint">Scan and report what would be uploaded, without actually uploading to Immich.</p>
-            </div>
-          </div>
-        </div>
         </>}
       </div>
 

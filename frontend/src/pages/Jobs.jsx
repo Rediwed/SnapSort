@@ -4,10 +4,10 @@ import Badge from '../components/Badge';
 import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import FilePicker from '../components/FilePicker';
-import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles, fetchSettings, startImmichUpload, cancelImmichUpload } from '../api';
-import { FlaskConical, Zap, RefreshCw, Disc, Trash2, AlertTriangle, Upload } from 'lucide-react';
+import { fetchJobs, createJob, startJob, cancelJob, deleteJob, deleteJobWithPhotos, fetchTestPresets, fetchProfiles, fetchSettings } from '../api';
+import { FlaskConical, Zap, RefreshCw, Disc, Trash2, AlertTriangle } from 'lucide-react';
 
-const statusVariant = { pending: 'orange', running: 'accent', overriding: 'cyan', done: 'green', error: 'red', cancelled: 'red' };
+const statusVariant = { pending: 'orange', running: 'accent', overriding: 'cyan', done: 'green', error: 'red' };
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
@@ -17,7 +17,6 @@ export default function Jobs() {
   const [picker, setPicker] = useState({ open: false, field: null });
   const [loadingTest, setLoadingTest] = useState(false);
   const [diagEnabled, setDiagEnabled] = useState(false);
-  const [immichEnabled, setImmichEnabled] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);    // job to delete
   const [confirmPhotos, setConfirmPhotos] = useState(false); // second confirmation
   const navigate = useNavigate();
@@ -25,11 +24,11 @@ export default function Jobs() {
   const load = useCallback(() => fetchJobs().then(setJobs).catch(console.error), []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { fetchProfiles().then(setProfiles).catch(console.error); }, []);
-  useEffect(() => { fetchSettings().then((s) => { setDiagEnabled(s.diagnostics_enabled === 'true'); setImmichEnabled(s.immich_enabled === 'true'); }).catch(() => {}); }, []);
+  useEffect(() => { fetchSettings().then((s) => setDiagEnabled(s.diagnostics_enabled === 'true')).catch(() => {}); }, []);
 
   /* Live-poll every 500ms while any job is running or overriding */
   useEffect(() => {
-    const hasActive = jobs.some((j) => j.status === 'running' || j.status === 'overriding' || j.immich_status === 'running');
+    const hasActive = jobs.some((j) => j.status === 'running' || j.status === 'overriding');
     if (hasActive) {
       const id = setInterval(load, 500);
       return () => clearInterval(id);
@@ -127,44 +126,12 @@ export default function Jobs() {
       key: 'progress', header: 'Progress', className: 'mono col-job-progress', render: (r) =>
         r.status === 'running' ? pctBar(r) : `${r.processed}/${r.total_files || '?'}`,
     },
-    ...(immichEnabled ? [{
-      key: 'immich', header: 'Immich', className: 'col-job-immich', render: (r) => {
-        if (!r.immich_status) return <span style={{ opacity: 0.3 }}>—</span>;
-        const variant = { running: 'accent', done: 'green', error: 'red', cancelled: 'red', pending: 'orange' };
-        return (
-          <div>
-            <Badge variant={variant[r.immich_status] || 'accent'}>{r.immich_status}</Badge>
-            {r.immich_status === 'running' && (
-              <div className="mono" style={{ fontSize: 11, marginTop: 4, opacity: 0.7 }}>
-                ↑{r.immich_uploaded || 0} / {r.immich_assets || '?'}
-              </div>
-            )}
-            {r.immich_status === 'done' && (
-              <div className="mono" style={{ fontSize: 11, marginTop: 4, opacity: 0.7 }}>
-                ↑{r.immich_uploaded || 0} dupes:{r.immich_duplicates || 0}
-              </div>
-            )}
-            {r.immich_status === 'error' && r.immich_error_message && (
-              <div style={{ fontSize: 11, color: 'var(--red)', marginTop: 4 }}>{r.immich_error_message}</div>
-            )}
-          </div>
-        );
-      },
-    }] : []),
     {
       key: 'actions', header: 'Actions', className: 'col-job-actions', render: (r) => (
         <div className="flex gap-8" onClick={(e) => e.stopPropagation()}>
           {r.status === 'pending' && <button className="btn sm primary" onClick={() => startJob(r.id).then(load).catch((e) => { alert(e.message); load(); })}>Start</button>}
           {r.status === 'running' && <button className="btn sm danger" onClick={() => cancelJob(r.id).then(load)}>Cancel</button>}
           {['done', 'error'].includes(r.status) && <button className="btn sm danger" onClick={() => setDeleteTarget(r)}>Delete</button>}
-          {immichEnabled && r.status === 'done' && (!r.immich_status || r.immich_status === 'error' || r.immich_status === 'cancelled') && (
-            <button className="btn sm" onClick={() => startImmichUpload(r.id).then(load).catch((e) => { alert(e.message); load(); })}>
-              <Upload size={14} /> Immich
-            </button>
-          )}
-          {immichEnabled && r.immich_status === 'running' && (
-            <button className="btn sm danger" onClick={() => cancelImmichUpload(r.id).then(load)}>Cancel Upload</button>
-          )}
         </div>
       ),
     },

@@ -20,41 +20,6 @@ router.get('/', (req, res) => {
   res.json(getAllSettings(req.db));
 });
 
-/* Test Immich connection */
-router.post('/immich-test', async (req, res) => {
-  const { server, apiKey } = req.body;
-  if (!server || !apiKey) {
-    return res.status(400).json({ ok: false, error: 'Server URL and API key are required' });
-  }
-  try {
-    const url = `${server.replace(/\/+$/, '')}/api/users/me`;
-    const resp = await fetch(url, {
-      headers: { 'x-api-key': apiKey },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (resp.status === 200) {
-      const user = await resp.json();
-      res.json({ ok: true, user: user.name || user.email || 'Connected' });
-    } else if (resp.status === 401) {
-      res.json({ ok: false, error: 'Invalid API key (HTTP 401)' });
-    } else {
-      res.json({ ok: false, error: `HTTP ${resp.status}` });
-    }
-  } catch (err) {
-    res.json({ ok: false, error: err.message || 'Connection failed' });
-  }
-});
-
-/* Check immich-go availability */
-router.get('/immich-go-status', (_req, res) => {
-  const { isImmichGoAvailable, getImmichGoVersion } = require('../services/immichBridge');
-  const available = isImmichGoAvailable();
-  res.json({
-    available,
-    version: available ? getImmichGoVersion() : null,
-  });
-});
-
 /* Update a single setting */
 router.put('/:key', (req, res) => {
   const { value } = req.body;
