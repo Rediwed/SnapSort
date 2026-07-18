@@ -2,22 +2,36 @@ version: "3.9"
 
 services:
   snapsort:
-    image: rediwed/snapsort:1.1.0
+    image: rediwed/snapsort:1.2.1
     build: .
     container_name: snapsort
+    init: true
     ports:
       - "8080:4000"
     volumes:
-      - db-data:/app/backend/data         # persist SQLite database
-      - /mnt/user/photos:/mnt/photos      # adjust to your photo share
-      # Optional: mount external/unallocated disks (Unraid Unassigned Devices plugin)
-      # Uses :rslave so drives mounted on the host after start are visible.
-      # - /mnt/disks:/mnt/disks:rslave
-      # Optional: mount all user shares (read-only)
-      # - /mnt/user:/mnt/user:ro,rslave
+      - db-data:/app/backend/data                 # SQLite DB (must be writable by uid 1000)
+      # SOURCE photo share — mounted READ-ONLY so SnapSort can never modify it.
+      - /mnt/user/photos:/mnt/photos:ro
+      # DESTINATION share (writable) — point SnapSort's destination here.
+      - /mnt/user/photos-organized:/mnt/photos-organized
+      # Optional: mount external/unallocated disks READ-ONLY for scanning.
+      # - /mnt/disks:/mnt/disks:ro,rslave
     environment:
       - NODE_ENV=production
       - PORT=4000
+      # Expose on the network (required for the published port to be reachable).
+      - SNAPSORT_ALLOW_LAN=true
+      # STRONGLY RECOMMENDED when reachable beyond localhost: require a bearer token.
+      # Put SNAPSORT_AUTH_TOKEN in a .env file next to this compose file.
+      - SNAPSORT_AUTH_TOKEN=${SNAPSORT_AUTH_TOKEN:-}
+      # Restrict browser CORS origins (comma-separated). Defaults to localhost only.
+      # - SNAPSORT_CORS_ORIGINS=https://snapsort.example.com
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Raise if very large libraries are OOM-killed.
+    # mem_limit: 2g
     restart: unless-stopped
 
 volumes:

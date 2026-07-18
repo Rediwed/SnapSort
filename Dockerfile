@@ -1,30 +1,34 @@
 # ============================================================
 # SnapSort — Unified Dockerfile (frontend + backend + Python)
 # ============================================================
+# Base image is pinned to a major/minor tag. For fully reproducible builds,
+# override with a digest, e.g.:
+#   docker build --build-arg NODE_IMAGE=node:20-alpine@sha256:<digest> .
+ARG NODE_IMAGE=node:20-alpine
 
 # ---- Stage 1: Build the React frontend ----
-FROM node:20-alpine AS frontend-build
+FROM ${NODE_IMAGE} AS frontend-build
 WORKDIR /build
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci || npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
 # ---- Stage 2: Install backend dependencies ----
-FROM node:20-alpine AS backend-deps
+FROM ${NODE_IMAGE} AS backend-deps
 WORKDIR /build
-COPY backend/package.json backend/package-lock.json* ./
-RUN npm ci --omit=dev || npm install --omit=dev
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci --omit=dev
 
 # ---- Stage 3: Final runtime image ----
-FROM node:20-alpine
+FROM ${NODE_IMAGE}
 
 RUN apk add --no-cache python3 py3-pip exiftool
 
-# Python dependencies
+# Python dependencies (versions pinned in requirements.txt)
 WORKDIR /app
 COPY requirements.txt ./
-RUN pip3 install --no-cache-dir --break-system-packages Pillow piexif -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Python engine files
 COPY *.py ./
@@ -39,10 +43,17 @@ COPY backend/src ./src
 # Built frontend → served as static files by Express
 COPY --from=frontend-build /build/dist ./public
 
-# Data directory for SQLite
-RUN mkdir -p /app/backend/data
+# Data directory for SQLite, owned by the non-root runtime user (uid 1000).
+# NOTE: a bind-mounted data dir must be writable by uid 1000 (or set matching PUID).
+RUN mkdir -p /app/backend/data && chown -R node:node /app
+
+# Drop root privileges for the runtime.
+USER node
 
 VOLUME ["/app/backend/data"]
 EXPOSE 4000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:4000/api/health >/dev/null 2>&1 || exit 1
 
 CMD ["node", "src/index.js"]
