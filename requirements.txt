@@ -1,2 +1,5 @@
-Pillow==10.4.0
+# Pillow: floor at a patched release. The container (Python 3.12) resolves the
+# latest 12.x (all reported CVEs fixed); local dev on Python 3.9 gets the newest
+# 11.x. Do not pin to an old exact version — that reintroduces image CVEs.
+Pillow>=11.3.0
 piexif==1.1.3

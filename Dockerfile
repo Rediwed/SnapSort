@@ -20,15 +20,27 @@ WORKDIR /build
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev
 
-# ---- Stage 3: Final runtime image ----
+# ---- Stage 3: Python dependencies (isolated so pip/setuptools/wheel never reach the runtime) ----
+FROM ${NODE_IMAGE} AS py-deps
+RUN apk add --no-cache python3 py3-pip
+COPY requirements.txt ./
+RUN pip3 install --no-cache-dir --break-system-packages --target=/pydeps -r requirements.txt
+
+# ---- Stage 4: Final runtime image ----
 FROM ${NODE_IMAGE}
 
-RUN apk add --no-cache python3 py3-pip exiftool
+# Patch OS packages (OpenSSL, musl, expat, zlib, busybox, ...) to the latest
+# available in the base's Alpine branch, then add only runtime tools. py3-pip is
+# intentionally NOT installed at runtime — its packaging tooling (pip/setuptools/
+# wheel) is a needless CVE surface.
+RUN apk upgrade --no-cache && apk add --no-cache python3 exiftool
 
-# Python dependencies (versions pinned in requirements.txt)
+# Python site-packages built in the py-deps stage (Pillow musllinux wheels are
+# self-contained). Exposed via PYTHONPATH; no build tooling is shipped.
+ENV PYTHONPATH=/opt/pydeps
+COPY --from=py-deps /pydeps /opt/pydeps
+
 WORKDIR /app
-COPY requirements.txt ./
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Python engine files
 COPY *.py ./
