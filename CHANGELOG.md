@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Security & reliability hardening pass (audit findings CA-01 … CA-23).
+## [1.3.0] - 2026-07-19
+
+Security & reliability hardening pass (audit findings CA-01 … CA-23), plus a Docker image CVE sweep.
 
 ### Security
 - [x] Remove the benchmark remote-code-execution path: the storage benchmark is now a
@@ -63,3 +65,14 @@ Security & reliability hardening pass (audit findings CA-01 … CA-23).
 - [x] Add engine + backend test suites, a GitHub Actions CI workflow, and this changelog (CA-20).
 - [x] Frontend focus-trap/scroll-lock/ARIA on the shared modal; masked secret fields in
   Settings (CA-21, CA-22).
+
+### Container image / CVE sweep
+- [x] `apk upgrade` the runtime OS packages — OpenSSL 3.5.5→3.5.7 (3 critical + 13 high),
+  musl 1.2.5-r21→r23, expat 2.7.5→2.8.2, zlib 1.3.1→1.3.2.
+- [x] Pillow floor raised to `>=11.3.0`; the container now ships **Pillow 12.3.0** (all
+  reported Pillow CVEs fixed) instead of the mistaken `==10.4.0` pin.
+- [x] Install Python deps in an isolated builder stage (`pip --target`); the runtime no
+  longer ships pip/setuptools/wheel, removing that CVE surface.
+- [x] `npm audit fix` on backend production dependencies — 0 advisories remaining.
+- Note: Perl, SQLite and BusyBox each carry one CVE with no upstream Alpine fix yet; these
+  are OS-level and not reachable through SnapSort's auth-gated, loopback-bound API.
